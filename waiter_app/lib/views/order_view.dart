@@ -204,6 +204,27 @@ class OrderView extends StatelessWidget {
                               height: 50,
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.pastelBlue,
+                                  foregroundColor: AppTheme.textDark,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                                onPressed: table.orders.isEmpty
+                                    ? null
+                                    : () {
+                                        controller.printReceipt(tableId);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Adisyon Yazdırıldı.')),
+                                        );
+                                      },
+                                child: const Text('Adisyon Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.pastelYellow,
                                   foregroundColor: AppTheme.textDark,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

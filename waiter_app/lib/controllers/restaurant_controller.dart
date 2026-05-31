@@ -1,6 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+
 import '../models/product.dart';
 import '../models/table_model.dart';
 import '../models/order_item.dart';
@@ -92,6 +96,76 @@ class RestaurantController extends ChangeNotifier {
   void saveTable(int tableId) {
     final table = tables.firstWhere((t) => t.id == tableId);
     table.status = TableStatus.occupied;
+    notifyListeners();
+  }
+
+  Future<void> printReceipt(int tableId) async {
+    final table = tables.firstWhere((t) => t.id == tableId);
+    
+    if (table.orders.isEmpty) return;
+
+    // 1. PDF Fişi Oluştur
+    final pdf = pw.Document();
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.roll80,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Center(child: pw.Text('BALIKÇI SÜLEYMAN', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
+              pw.SizedBox(height: 10),
+              pw.Text('Masa No: $tableId', style: pw.TextStyle(fontSize: 18)),
+              pw.Divider(),
+              // Sepetteki ürünleri dinamik olarak PDF'e bas
+              ...table.orders.map((item) => pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('${item.quantity}x ${item.product.name}'),
+                  pw.Text('${item.totalPrice.toStringAsFixed(2)} TL'),
+                ],
+              )).toList(),
+              pw.Divider(),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('TOPLAM:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text('${table.totalBill.toStringAsFixed(2)} TL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    // 2. Yazıcıya Gönder (Varsayılan Windows yazıcısını bularak yollar)
+    try {
+      // a. Sisteme bağlı tüm yazıcıları çek
+      final printers = await Printing.listPrinters();
+      
+      if (printers.isEmpty) {
+        debugPrint("Sistemde kurulu yazıcı bulunamadı!");
+        return; // Yazıcı yoksa işlemi durdur
+      }
+
+      // b. Windows'ta "Varsayılan" (Default) olarak ayarlanmış yazıcıyı bul. 
+      // Eğer varsayılan ayarlanmamışsa, listedeki ilk yazıcıyı al.
+      final myPrinter = printers.firstWhere(
+        (p) => p.isDefault, 
+        orElse: () => printers.first
+      );
+
+      // c. Fişi seçili yazıcıya gönder
+      await Printing.directPrintPdf(
+        printer: myPrinter, // Hatanın çözümü olan zorunlu parametre
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+      );
+      
+    } catch (e) {
+      debugPrint("Yazdırma Hatası: $e");
+    }
+
     notifyListeners();
   }
 }
