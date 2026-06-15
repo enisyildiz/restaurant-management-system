@@ -18,8 +18,8 @@ class OrderView extends StatelessWidget {
         iconTheme: const IconThemeData(color: AppTheme.textDark),
         elevation: 0,
       ),
-      body: ListenableBuilder(
-        listenable: controller,
+      body: AnimatedBuilder(
+        animation: controller,
         builder: (context, child) {
           final table = controller.tables.firstWhere((t) => t.id == tableId);
 
@@ -204,27 +204,6 @@ class OrderView extends StatelessWidget {
                               height: 50,
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.pastelBlue,
-                                  foregroundColor: AppTheme.textDark,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                onPressed: table.orders.isEmpty
-                                    ? null
-                                    : () {
-                                        controller.printReceipt(tableId);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Adisyon Yazdırıldı.')),
-                                        );
-                                      },
-                                child: const Text('Adisyon Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 50,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.pastelYellow,
                                   foregroundColor: AppTheme.textDark,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -240,7 +219,55 @@ class OrderView extends StatelessWidget {
                                       },
                                 child: const Text('Kaydet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                               ),
-                            )
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 50,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.pastelBlue,
+                                        foregroundColor: AppTheme.textDark,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: table.orders.isEmpty
+                                          ? null
+                                          : () {
+                                              controller.printReceipt(tableId, PrintTarget.kitchen);
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Mutfak Adisyonu Yazdırıldı.')),
+                                              );
+                                            },
+                                      child: const Text('Mutfak Adisyonu Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 50,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green.shade200, 
+                                        foregroundColor: AppTheme.textDark,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: table.orders.isEmpty
+                                          ? null
+                                          : () {
+                                              controller.printReceipt(tableId, PrintTarget.cashier);
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Kasa Adisyonu Yazdırıldı.')),
+                                              );
+                                            },
+                                      child: const Text('Kasa Adisyonu Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       )

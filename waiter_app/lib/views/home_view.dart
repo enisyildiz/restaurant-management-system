@@ -19,15 +19,15 @@ class HomeView extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
       ),
-      // ListenableBuilder, controller'daki notifyListeners() tetiklendiğinde sadece bu kısmı çizer
-      body: ListenableBuilder(
-        listenable: controller,
+      // AnimatedBuilder, controller'daki notifyListeners() tetiklendiğinde sadece bu kısmı çizer
+      body: AnimatedBuilder(
+        animation: controller,
         builder: (context, child) {
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: GridView.builder(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 5, // Tablette daha iyi görünmesi için 4 veya 5 yapılabilir
+                crossAxisCount: 5,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
                 childAspectRatio: 1.2,
