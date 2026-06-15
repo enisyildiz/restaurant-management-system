@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'controllers/restaurant_controller.dart';
-import 'views/home_view.dart';
-import 'globals.dart';
+import 'package:core/views/home_view.dart';
+import 'package:core/globals.dart';
+import 'package:core/controllers/restaurant_controller.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
