@@ -8,12 +8,17 @@ import 'package:printing/printing.dart';
 import '../models/product.dart';
 import '../models/table_model.dart';
 import '../models/order_item.dart';
+import '../globals.dart';
+
+enum PrintTarget { 
+  kitchen, 
+  cashier 
+}
+
 
 class RestaurantController extends ChangeNotifier {
   List<Product> _menu = [];
   bool isLoadingMenu = true;
-
-  // --- YENİ EKLENEN KISIMLAR (Kategori ve Filtreleme) ---
   List<String> categories = [];
   String selectedCategory = 'Tümü';
 
@@ -50,7 +55,7 @@ class RestaurantController extends ChangeNotifier {
       isLoadingMenu = false;
       notifyListeners();
     } catch (e) {
-      debugPrint("JSON yüklenirken hata oluştu: $e");
+      _showSnackbar("JSON yüklenirken hata oluştu: $e", true);
       isLoadingMenu = false;
       notifyListeners();
     }
@@ -99,13 +104,32 @@ class RestaurantController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> printReceipt(int tableId) async {
+  Future<void> printReceipt(int tableId, PrintTarget target) async {
     final table = tables.firstWhere((t) => t.id == tableId);
-    
+    final List<Printer> printers = await Printing.listPrinters();
+
+    String targetPrinterName = target == PrintTarget.kitchen ? 'MUTFAK' : 'KASA';
+
+    Printer? selectedPrinter;
+
     if (table.orders.isEmpty) return;
 
-    // 1. PDF Fişi Oluştur
-    final pdf = pw.Document();
+    try {
+      selectedPrinter = printers.firstWhere((p) => p.name == targetPrinterName);
+    } catch (e) {
+      _showSnackbar('HATA: Yazıcı $targetPrinterName sistemde bulunamadı!', true);
+      return; 
+    }
+
+    final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
+    final ttf = pw.Font.ttf(fontData);
+
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: ttf,
+      ),
+    );
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.roll80,
@@ -115,57 +139,116 @@ class RestaurantController extends ChangeNotifier {
             children: [
               pw.Center(child: pw.Text('BALIKÇI SÜLEYMAN', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
               pw.SizedBox(height: 10),
-              pw.Text('Masa No: $tableId', style: pw.TextStyle(fontSize: 18)),
+              pw.Text('Masa No: $tableId', style: const pw.TextStyle(fontSize: 18)),
               pw.Divider(),
-              // Sepetteki ürünleri dinamik olarak PDF'e bas
-              ...table.orders.map((item) => pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('${item.quantity}x ${item.product.name}'),
-                  pw.Text('${item.totalPrice.toStringAsFixed(2)} TL'),
+              ..._buildOrderRows(table.orders, target),
+              if (target == PrintTarget.cashier) ...[
+                pw.Divider(),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('TOPLAM:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('${table.totalBill.toStringAsFixed(2)} TL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold),),
+                    ],
+                  ),
                 ],
-              )).toList(),
-              pw.Divider(),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('TOPLAM:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.Text('${table.totalBill.toStringAsFixed(2)} TL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                ],
-              ),
             ],
           );
         },
       ),
     );
 
-    // 2. Yazıcıya Gönder (Varsayılan Windows yazıcısını bularak yollar)
     try {
-      // a. Sisteme bağlı tüm yazıcıları çek
-      final printers = await Printing.listPrinters();
-      
-      if (printers.isEmpty) {
-        debugPrint("Sistemde kurulu yazıcı bulunamadı!");
-        return; // Yazıcı yoksa işlemi durdur
-      }
-
-      // b. Windows'ta "Varsayılan" (Default) olarak ayarlanmış yazıcıyı bul. 
-      // Eğer varsayılan ayarlanmamışsa, listedeki ilk yazıcıyı al.
-      final myPrinter = printers.firstWhere(
-        (p) => p.isDefault, 
-        orElse: () => printers.first
-      );
-
-      // c. Fişi seçili yazıcıya gönder
       await Printing.directPrintPdf(
-        printer: myPrinter, // Hatanın çözümü olan zorunlu parametre
+        printer: selectedPrinter,
         onLayout: (PdfPageFormat format) async => pdf.save(),
       );
-      
     } catch (e) {
-      debugPrint("Yazdırma Hatası: $e");
+      _showSnackbar("Yazdırma Hatası: $e", true);
     }
 
+    notifyListeners();
+  }
+
+  void _showSnackbar(String message, bool isFailed) {
+    globalMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        backgroundColor: isFailed ? Colors.red.shade800 : Colors.green.shade800,
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  List<pw.Widget> _buildOrderRows(List<OrderItem> orders, PrintTarget target) {
+    Iterable<OrderItem> itemsToPrint = orders;
+
+    if (target == PrintTarget.kitchen) {
+      itemsToPrint = orders.where((item) {
+        final kategori = item.product.category.toLowerCase();
+        
+        return kategori != 'içecekler' && kategori != 'tatlılar'; 
+      });
+    }
+
+    return itemsToPrint.map<pw.Widget>((item) {
+      if (target == PrintTarget.kitchen) {
+        return pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2.0),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.start,
+            children: [
+              pw.Text(
+                '${item.quantity}x  ${item.product.name}',
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14),
+              ),
+            ],
+          ),
+        );
+      } 
+      
+      else {
+        return pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2.0),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('${item.quantity}x ${item.product.name}'),
+              pw.Text('${item.totalPrice.toStringAsFixed(2)} TL'),
+            ],
+          ),
+        );
+      }
+      
+    }).toList();
+  }
+
+  void moveTable(int currentTableId, int targetTableId) {
+    // 1. Mevcut ve hedef masaları listeden bul
+    // (Kendi model/değişken isimlerine göre 'tables' kısmını güncelle)
+    final currentTable = tables.firstWhere((t) => t.id == currentTableId);
+    final targetTable = tables.firstWhere((t) => t.id == targetTableId);
+
+    // 2. Hedef masa boş mu kontrol et (içinde sipariş var mı?)
+    if (targetTable.orders.isNotEmpty) {
+      // Daha önce kurduğumuz global mesaj sistemiyle hata fırlat ve işlemi kes
+      _showSnackbar('Taşıma başarısız: Hedef masa boş değil!', false);
+      return; 
+    }
+
+    // 3. Transfer işlemini gerçekleştir
+    targetTable.orders.addAll(currentTable.orders);
+    
+    // (Eğer modelinde masaya ait toplam tutar vb. ekstra alanlar varsa onları da aktar)
+    // targetTable.totalBill = currentTable.totalBill; 
+
+    // 4. Eski masayı tamamen temizle
+    currentTable.orders.clear();
+    // currentTable.totalBill = 0.0;
+
+    // 5. Başarı mesajı ver ve arayüzü güncelle
+    _showSnackbar('Masa başarıyla taşındı.', true);
     notifyListeners();
   }
 }
