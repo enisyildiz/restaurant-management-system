@@ -226,6 +226,7 @@ class RestaurantController extends ChangeNotifier {
 
   void moveTable(int currentTableId, int targetTableId) {
     // 1. Mevcut ve hedef masaları listeden bul
+    //
     // (Kendi model/değişken isimlerine göre 'tables' kısmını güncelle)
     final currentTable = tables.firstWhere((t) => t.id == currentTableId);
     final targetTable = tables.firstWhere((t) => t.id == targetTableId);
