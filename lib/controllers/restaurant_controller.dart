@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 import '../models/product.dart';
 import '../models/table_model.dart';
 import '../models/order_item.dart';
+import '../models/payment_record.dart';
 import '../globals.dart';
 
 enum PrintTarget { 
@@ -147,7 +148,7 @@ class RestaurantController extends ChangeNotifier {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text('TOPLAM:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    pw.Text('${table.totalBill.toStringAsFixed(2)} TL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold),),
+                    pw.Text('${table.currentTotal.toStringAsFixed(2)} TL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold),),
                     ],
                   ),
                 ],
@@ -241,14 +242,119 @@ class RestaurantController extends ChangeNotifier {
     targetTable.orders.addAll(currentTable.orders);
     
     // (Eğer modelinde masaya ait toplam tutar vb. ekstra alanlar varsa onları da aktar)
-    // targetTable.totalBill = currentTable.totalBill; 
+    // targetTable.currentTotal = currentTable.currentTotal; 
 
     // 4. Eski masayı tamamen temizle
     currentTable.orders.clear();
-    // currentTable.totalBill = 0.0;
+    // currentTable.currentTotal = 0.0;
 
     // 5. Başarı mesajı ver ve arayüzü güncelle
     _showSnackbar('Masa başarıyla taşındı.', true);
+    notifyListeners();
+  }
+
+  List<OrderItem> ordersForTable(int tableId) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+    
+    if (index == -1) {
+      return [];
+    }
+    
+    return tables[index].orders; 
+  }
+
+  List<PaymentRecord> paymentsForTable(int tableId) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+    
+    if (index == -1) {
+      return [];
+    }
+    
+    return tables[index].payments; 
+  }
+
+  double totalForTable(int tableId) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+    
+    if (index == -1) {
+      return 0.0;
+    }
+
+    return tables[index].currentTotal;
+  }
+
+  double totalPaidForTable(int tableId) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+    
+    if (index == -1) {
+      return 0.0;
+    }
+
+    return tables[index].totalPaid;
+  }
+
+  double remainingForTable(int tableId) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+
+    if (index == -1) {
+      return 0.0;
+    }
+
+    final remaining = tables[index].currentTotal - tables[index].totalPaid;
+
+    if (remaining < 0) {
+      return 0;
+    }
+
+    return remaining;
+  }
+
+  double cashPaidForTable(int tableId) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+
+    if (index == -1) {
+      return 0.0;
+    }
+
+    return tables[index].totalCashPaid;
+  }
+
+  double creditCardPaidForTable(int tableId) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+
+    if (index == -1) {
+      return 0.0;
+    }
+
+    return tables[index].totalCardPaid;
+  }
+
+  void addPaymentToTable({
+    required int tableId,
+    required double amount,
+    required PaymentMethod method}) {
+    if (amount <= 0) return;
+
+    final remaining = remainingForTable(tableId);
+
+    if (remaining <= 0) return;
+
+    final safeAmount = amount > remaining ? remaining : amount;
+
+    final index = tables.indexWhere((t) => t.id == tableId);
+
+    if (index == -1) {
+      return;
+    }
+
+    tables[index].payments.add(
+      PaymentRecord(
+        amount: safeAmount,
+        method: method,
+        paidAt: DateTime.now(),
+      ),
+    );
+
     notifyListeners();
   }
 }

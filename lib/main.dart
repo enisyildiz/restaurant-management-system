@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'controllers/restaurant_controller.dart';
-import 'views/main_menu_screen.dart';
+import 'views/main_menu_view.dart';
 import 'globals.dart';
 
 void main() {
@@ -25,7 +25,7 @@ class RestaurantManagerApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         fontFamily: 'Roboto',
       ),
-      home: MainMenuScreen(controller: controller),
+      home: MainMenuView(controller: controller),
     );
   }
 }

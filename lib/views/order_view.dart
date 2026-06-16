@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
 import '../theme/theme.dart';
+import 'payment_view.dart';
 
 class OrderView extends StatelessWidget {
   final RestaurantController controller;
@@ -171,7 +172,7 @@ class OrderView extends StatelessWidget {
                               children: [
                                 const Text('Toplam:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                                 Text(
-                                  '${table.totalBill.toStringAsFixed(2)} ₺',
+                                  '${table.currentTotal.toStringAsFixed(2)} ₺',
                                   style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
                                 ),
                               ],
@@ -263,9 +264,14 @@ class OrderView extends StatelessWidget {
                                       onPressed: table.orders.isEmpty
                                           ? null
                                           : () {
-                                              //controller.printReceipt(tableId, PrintTarget.cashier);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('No implementation')),
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => PaymentView(
+                                                    controller: controller,
+                                                    tableId: tableId,
+                                                  ),
+                                                ),
                                               );
                                             },
                                       child: const Text('Ödeme Al', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),

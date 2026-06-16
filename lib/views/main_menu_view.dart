@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '/views/home_view.dart';
+import 'table_view.dart';
 import '/controllers/restaurant_controller.dart';
 
-class MainMenuScreen extends StatelessWidget {
+class MainMenuView extends StatelessWidget {
   final RestaurantController controller;
 
-  const MainMenuScreen({super.key, required this.controller});
+  const MainMenuView({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +29,7 @@ class MainMenuScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => HomeView(controller: controller),
+                      builder: (_) => TableView(controller: controller),
                     ),
                   );
                 },

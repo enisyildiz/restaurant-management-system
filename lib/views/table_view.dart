@@ -4,10 +4,10 @@ import '../models/table_model.dart';
 import '../theme/theme.dart';
 import 'order_view.dart';
 
-class HomeView extends StatelessWidget {
+class TableView extends StatelessWidget {
   final RestaurantController controller;
 
-  const HomeView({Key? key, required this.controller}) : super(key: key);
+  const TableView({Key? key, required this.controller}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +75,7 @@ class HomeView extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          isEmpty ? 'BOŞ' : '${table.totalBill.toStringAsFixed(2)} ₺',
+                          isEmpty ? 'BOŞ' : '${table.currentTotal.toStringAsFixed(2)} ₺',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
