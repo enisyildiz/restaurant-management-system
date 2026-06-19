@@ -9,6 +9,8 @@ import '../models/product.dart';
 import '../models/table_model.dart';
 import '../models/order_item.dart';
 import '../models/payment_record.dart';
+import '../models/user_role.dart';
+import '../services/network_service.dart';
 import '../globals.dart';
 
 enum PrintTarget { 
@@ -21,6 +23,59 @@ class RestaurantController extends ChangeNotifier {
   bool isLoadingMenu = true;
   List<String> categories = [];
   String selectedCategory = 'Tümü';
+
+  User? currentUser;
+  NetworkService? _networkService;
+
+  bool login(String username, String password) {
+    if (username == 'admin' && password == 'admin123') {
+      currentUser = const User(username: 'admin', role: UserRole.admin);
+      _initNetwork();
+      notifyListeners();
+      return true;
+    } else if (username == 'waiter' && password == 'waiter123') {
+      currentUser = const User(username: 'waiter', role: UserRole.waiter);
+      _initNetwork();
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  void _initNetwork() {
+    _networkService = NetworkService(
+      role: currentUser!.role,
+      onMessageReceived: _handleNetworkMessage,
+      onError: (String error) {
+        _showSnackbar(error, true);
+      },
+    );
+    _networkService!.start();
+  }
+
+  void _handleNetworkMessage(Map<String, dynamic> data) {
+    final action = data['action'];
+    if (action == 'add_product') {
+      addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
+    } else if (action == 'remove_product') {
+      removeProductFromTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
+    } else if (action == 'checkout_table') {
+      checkoutTable(data['tableId'], fromNetwork: true);
+    } else if (action == 'move_table') {
+      moveTable(data['currentTableId'], data['targetTableId'], fromNetwork: true);
+    } else if (action == 'add_payment') {
+      final methodStr = data['method'];
+      final method = PaymentMethod.values.firstWhere((e) => e.toString() == methodStr);
+      addPaymentToTable(tableId: data['tableId'], amount: data['amount'], method: method, fromNetwork: true);
+    }
+  }
+
+  void logout() {
+    currentUser = null;
+    _networkService?.dispose();
+    _networkService = null;
+    notifyListeners();
+  }
 
   // Sadece seçili kategoriye ait ürünleri döndüren getter
   List<Product> get filteredMenu {
@@ -62,7 +117,7 @@ class RestaurantController extends ChangeNotifier {
   }
 
   // ... (Geri kalan addProductToTable, removeProductFromTable, checkoutTable fonksiyonları aynen kalacak) ...
-  void addProductToTable(int tableId, Product product) {
+  void addProductToTable(int tableId, Product product, {bool fromNetwork = false}) {
     final table = tables.firstWhere((t) => t.id == tableId);
     final existingItemIndex = table.orders.indexWhere((item) => item.product.id == product.id);
 
@@ -72,10 +127,18 @@ class RestaurantController extends ChangeNotifier {
       table.orders.add(OrderItem(product: product));
     }
     table.status = TableStatus.occupied;
+    
+    if (!fromNetwork && _networkService != null) {
+      _networkService!.sendMessage({
+        'action': 'add_product',
+        'tableId': tableId,
+        'product': product.toJson(),
+      });
+    }
     notifyListeners();
   }
 
-  void removeProductFromTable(int tableId, Product product) {
+  void removeProductFromTable(int tableId, Product product, {bool fromNetwork = false}) {
     final table = tables.firstWhere((t) => t.id == tableId);
     final existingItemIndex = table.orders.indexWhere((item) => item.product.id == product.id);
 
@@ -88,13 +151,29 @@ class RestaurantController extends ChangeNotifier {
     }
 
     if (table.orders.isEmpty) table.status = TableStatus.empty;
+    
+    if (!fromNetwork && _networkService != null) {
+      _networkService!.sendMessage({
+        'action': 'remove_product',
+        'tableId': tableId,
+        'product': product.toJson(),
+      });
+    }
     notifyListeners();
   }
 
-  void checkoutTable(int tableId) {
+  void checkoutTable(int tableId, {bool fromNetwork = false}) {
     final table = tables.firstWhere((t) => t.id == tableId);
     table.orders.clear();
+    table.payments.clear();
     table.status = TableStatus.empty;
+    
+    if (!fromNetwork && _networkService != null) {
+      _networkService!.sendMessage({
+        'action': 'checkout_table',
+        'tableId': tableId,
+      });
+    }
     notifyListeners();
   }
 
@@ -224,32 +303,32 @@ class RestaurantController extends ChangeNotifier {
     }).toList();
   }
 
-  void moveTable(int currentTableId, int targetTableId) {
-    // 1. Mevcut ve hedef masaları listeden bul
-    //
-    // (Kendi model/değişken isimlerine göre 'tables' kısmını güncelle)
+  void moveTable(int currentTableId, int targetTableId, {bool fromNetwork = false}) {
     final currentTable = tables.firstWhere((t) => t.id == currentTableId);
     final targetTable = tables.firstWhere((t) => t.id == targetTableId);
 
-    // 2. Hedef masa boş mu kontrol et (içinde sipariş var mı?)
-    if (targetTable.orders.isNotEmpty) {
-      // Daha önce kurduğumuz global mesaj sistemiyle hata fırlat ve işlemi kes
+    if (targetTable.orders.isNotEmpty && !fromNetwork) {
       _showSnackbar('Taşıma başarısız: Hedef masa boş değil!', false);
       return; 
     }
 
-    // 3. Transfer işlemini gerçekleştir
     targetTable.orders.addAll(currentTable.orders);
-    
-    // (Eğer modelinde masaya ait toplam tutar vb. ekstra alanlar varsa onları da aktar)
-    // targetTable.currentTotal = currentTable.currentTotal; 
+    targetTable.payments.addAll(currentTable.payments);
+    targetTable.status = TableStatus.occupied;
 
-    // 4. Eski masayı tamamen temizle
     currentTable.orders.clear();
-    // currentTable.currentTotal = 0.0;
+    currentTable.payments.clear();
+    currentTable.status = TableStatus.empty;
+    
+    if (!fromNetwork && _networkService != null) {
+      _networkService!.sendMessage({
+        'action': 'move_table',
+        'currentTableId': currentTableId,
+        'targetTableId': targetTableId,
+      });
+      _showSnackbar('Masa başarıyla taşındı.', true);
+    }
 
-    // 5. Başarı mesajı ver ve arayüzü güncelle
-    _showSnackbar('Masa başarıyla taşındı.', true);
     notifyListeners();
   }
 
@@ -332,20 +411,18 @@ class RestaurantController extends ChangeNotifier {
   void addPaymentToTable({
     required int tableId,
     required double amount,
-    required PaymentMethod method}) {
+    required PaymentMethod method,
+    bool fromNetwork = false,
+  }) {
     if (amount <= 0) return;
 
     final remaining = remainingForTable(tableId);
-
     if (remaining <= 0) return;
 
     final safeAmount = amount > remaining ? remaining : amount;
-
     final index = tables.indexWhere((t) => t.id == tableId);
 
-    if (index == -1) {
-      return;
-    }
+    if (index == -1) return;
 
     tables[index].payments.add(
       PaymentRecord(
@@ -354,6 +431,15 @@ class RestaurantController extends ChangeNotifier {
         paidAt: DateTime.now(),
       ),
     );
+
+    if (!fromNetwork && _networkService != null) {
+      _networkService!.sendMessage({
+        'action': 'add_payment',
+        'tableId': tableId,
+        'amount': safeAmount,
+        'method': method.toString(),
+      });
+    }
 
     notifyListeners();
   }

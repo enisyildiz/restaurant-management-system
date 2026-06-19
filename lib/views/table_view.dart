@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
 import '../models/table_model.dart';
+import '../models/user_role.dart';
 import '../theme/theme.dart';
 import 'order_view.dart';
+import 'login_view.dart';
 
 class TableView extends StatelessWidget {
   final RestaurantController controller;
@@ -12,25 +14,35 @@ class TableView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('Restoran Yönetimi - Masalar', style: TextStyle(color: AppTheme.textDark)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
+        title: const Text('Masalar'),
+        actions: [
+          if (controller.currentUser?.role == UserRole.waiter)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: () {
+                controller.logout();
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => LoginView(controller: controller)),
+                );
+              },
+              tooltip: 'Çıkış Yap',
+            ),
+          const SizedBox(width: 16),
+        ],
       ),
-      // AnimatedBuilder, controller'daki notifyListeners() tetiklendiğinde sadece bu kısmı çizer
       body: AnimatedBuilder(
         animation: controller,
         builder: (context, child) {
           return Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(24.0),
             child: GridView.builder(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 5,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 1.2,
+                crossAxisSpacing: 24,
+                mainAxisSpacing: 24,
+                childAspectRatio: 1.1,
               ),
               itemCount: controller.tables.length,
               itemBuilder: (context, index) {
@@ -52,34 +64,51 @@ class TableView extends StatelessWidget {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     decoration: BoxDecoration(
-                      color: isEmpty ? AppTheme.pastelGreen : AppTheme.pastelRed,
-                      borderRadius: BorderRadius.circular(16),
+                      color: isEmpty ? AppTheme.pastelGreen.withOpacity(0.15) : AppTheme.pastelRed.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isEmpty ? AppTheme.pastelGreen.withOpacity(0.5) : AppTheme.pastelRed.withOpacity(0.5),
+                        width: 2,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: (isEmpty ? AppTheme.pastelGreen : AppTheme.pastelRed).withOpacity(0.1),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isEmpty ? AppTheme.pastelGreen.withOpacity(0.2) : AppTheme.pastelRed.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isEmpty ? Icons.check_circle_outline : Icons.restaurant,
+                            color: isEmpty ? AppTheme.pastelGreen : AppTheme.pastelRed,
+                            size: 32,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         Text(
                           table.name,
                           style: const TextStyle(
-                            fontSize: 24,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textDark,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         Text(
                           isEmpty ? 'BOŞ' : '${table.currentTotal.toStringAsFixed(2)} ₺',
                           style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.textDark.withOpacity(0.7),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isEmpty ? AppTheme.pastelGreen : AppTheme.pastelRed,
                           ),
                         ),
                       ],

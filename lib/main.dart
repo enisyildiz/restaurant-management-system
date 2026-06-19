@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'controllers/restaurant_controller.dart';
-import 'views/main_menu_view.dart';
+import 'views/login_view.dart';
 import 'globals.dart';
+import 'theme/theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,11 +22,8 @@ class RestaurantManagerApp extends StatelessWidget {
       title: 'Restoran Demo',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: globalMessengerKey,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        fontFamily: 'Roboto',
-      ),
-      home: MainMenuView(controller: controller),
+      theme: AppTheme.lightTheme,
+      home: LoginView(controller: controller),
     );
   }
 }

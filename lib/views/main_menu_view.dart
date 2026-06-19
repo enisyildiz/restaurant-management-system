@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'table_view.dart';
+import 'admin_dashboard_view.dart';
+import 'login_view.dart';
 import '/controllers/restaurant_controller.dart';
+import '../theme/theme.dart';
 
 class MainMenuView extends StatelessWidget {
   final RestaurantController controller;
@@ -9,22 +12,39 @@ class MainMenuView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = controller.currentUser?.isAdmin ?? false;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Restaurant Order App'),
+        title: const Text('Restoran Yönetimi'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              controller.logout();
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => LoginView(controller: controller)),
+              );
+            },
+            tooltip: 'Çıkış Yap',
+          ),
+          const SizedBox(width: 16),
+        ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(40),
         child: Center(
           child: Wrap(
-            spacing: 24,
-            runSpacing: 24,
+            spacing: 32,
+            runSpacing: 32,
             alignment: WrapAlignment.center,
             children: [
               _MainMenuCard(
                 icon: Icons.table_restaurant,
-                title: 'Tables',
-                subtitle: 'Open table order screen',
+                title: 'Masalar',
+                subtitle: 'Sipariş ekranını aç',
+                color: AppTheme.primary,
                 onTap: () {
                   Navigator.push(
                     context,
@@ -35,24 +55,35 @@ class MainMenuView extends StatelessWidget {
                 },
               ),
 
-              const _MainMenuCard(
+              if (isAdmin)
+                _MainMenuCard(
+                  icon: Icons.bar_chart,
+                  title: 'Yönetici Paneli',
+                  subtitle: 'Satışları ve grafikleri gör',
+                  color: AppTheme.pastelGreen,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminDashboardView(controller: controller),
+                      ),
+                    );
+                  },
+                ),
+
+              _MainMenuCard(
                 icon: Icons.account_balance_wallet,
-                title: 'Vault',
-                subtitle: 'Coming soon',
+                title: 'Kasa',
+                subtitle: 'Yakında eklenecek',
+                color: AppTheme.pastelYellow,
                 onTap: null,
               ),
 
-              const _MainMenuCard(
-                icon: Icons.bar_chart,
-                title: 'Today\'s Sales',
-                subtitle: 'Coming soon',
-                onTap: null,
-              ),
-
-              const _MainMenuCard(
+              _MainMenuCard(
                 icon: Icons.settings,
-                title: 'Settings',
-                subtitle: 'Coming soon',
+                title: 'Ayarlar',
+                subtitle: 'Yakında eklenecek',
+                color: AppTheme.textMuted,
                 onTap: null,
               ),
             ],
@@ -67,12 +98,14 @@ class _MainMenuCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final Color color;
   final VoidCallback? onTap;
 
   const _MainMenuCard({
     required this.icon,
     required this.title,
     required this.subtitle,
+    required this.color,
     required this.onTap,
   });
 
@@ -81,41 +114,59 @@ class _MainMenuCard extends StatelessWidget {
     final isEnabled = onTap != null;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(24),
       onTap: onTap,
       child: Opacity(
-        opacity: isEnabled ? 1 : 0.45,
+        opacity: isEnabled ? 1 : 0.5,
         child: Container(
-          width: 240,
-          height: 160,
-          padding: const EdgeInsets.all(20),
+          width: 260,
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant,
-            borderRadius: BorderRadius.circular(18),
+            color: AppTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
+              color: AppTheme.textMuted.withOpacity(0.1),
+              width: 1,
             ),
+            boxShadow: [
+              if (isEnabled)
+                BoxShadow(
+                  color: color.withOpacity(0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                )
+            ],
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 42,
-                color: Theme.of(context).colorScheme.primary,
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  size: 48,
+                  color: color,
+                ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
               Text(
                 title,
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
+                  color: AppTheme.textDark,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.textMuted),
               ),
             ],
           ),
