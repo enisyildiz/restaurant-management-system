@@ -19,7 +19,7 @@ class RestaurantManagerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Restoran Demo',
+      title: 'Restaurant App',
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: globalMessengerKey,
       theme: AppTheme.lightTheme,

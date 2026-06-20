@@ -72,6 +72,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/menu.json
+    - assets/tables.json
     - assets/fonts/Roboto-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:

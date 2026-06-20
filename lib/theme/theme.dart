@@ -12,6 +12,7 @@ class AppTheme {
   static const Color pastelRed = Color(0xFFFF9AA2);
   static const Color pastelBlue = Color(0xFFC7CEEA);
   static const Color pastelYellow = Color(0xFFFDFD96);
+  static const Color pastelOrange = Color(0xFFFFB347);
   
   static const Color textDark = Color(0xFF1A1A1A); // Almost Black
   static const Color textMuted = Color(0xFF5A5A5A); // Dark Gray

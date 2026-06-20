@@ -8,6 +8,7 @@ import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/user_role.dart';
 import '../globals.dart';
+import 'logger_service.dart';
 
 typedef OnMessageReceived = void Function(Map<String, dynamic> data);
 typedef OnErrorCallback = void Function(String error);
@@ -53,11 +54,13 @@ class NetworkService {
 
     final wsHandler = webSocketHandler((WebSocketChannel webSocket) {
       _clients.add(webSocket);
+      LoggerService.instance.info('Client connected. Total clients: ${_clients.length}');
       onConnected();
       
       webSocket.stream.listen(
         (message) {
           final data = jsonDecode(message);
+          LoggerService.instance.info("Received data from client (Action: ${data['action']})");
           onMessageReceived(data);
           
           for (final client in _clients) {
@@ -68,9 +71,11 @@ class NetworkService {
         },
         onDone: () {
           _clients.remove(webSocket);
+          LoggerService.instance.info('Client disconnected. Total clients: ${_clients.length}');
         },
         onError: (e) {
           _clients.remove(webSocket);
+          LoggerService.instance.error('Client error: $e. Total clients: ${_clients.length}');
         },
       );
     });
@@ -81,9 +86,9 @@ class NetworkService {
 
     try {
       _server = await io.serve(pipeline, InternetAddress.anyIPv4, 8080);
-      print('Host Server running on port ${_server!.port}');
+      LoggerService.instance.info('Host Server running on port ${_server!.port}');
     } catch (e) {
-      print('Error starting server: $e');
+      LoggerService.instance.error('Error starting server: $e');
     }
   }
 
@@ -102,24 +107,29 @@ class NetworkService {
       _clientChannel = WebSocketChannel.connect(wsUrl);
       
       _isConnected = true;
+      LoggerService.instance.info('Connected to host server at $wsUrl');
       onConnected();
       
       _clientChannel!.stream.listen(
         (message) {
           final data = jsonDecode(message);
+          LoggerService.instance.info("Received data from server (Action: ${data['action']})");
           onMessageReceived(data);
         },
         onError: (error) {
           _isConnected = false;
+          LoggerService.instance.error('Server connection error: $error');
           onError('Sunucuya bağlanılamadı. Yeniden deneniyor...');
         },
         onDone: () {
           _isConnected = false;
+          LoggerService.instance.warning('Server connection closed');
           onError('Sunucu bağlantısı koptu. Yeniden deneniyor...');
         },
       );
     } catch (e) {
       _isConnected = false;
+      LoggerService.instance.error('Connection failure: $e');
       onError('Bağlantı hatası: $e');
     }
   }
@@ -129,16 +139,20 @@ class NetworkService {
       final message = jsonEncode(data);
       
       if (role == UserRole.admin) {
+        LoggerService.instance.info("Broadcasting to ${_clients.length} clients (Action: ${data['action']})");
         for (final client in _clients) {
           client.sink.add(message);
         }
       } else {
         if (_isConnected && _clientChannel != null) {
+          LoggerService.instance.info("Sending data to server (Action: ${data['action']})");
           _clientChannel!.sink.add(message);
+        } else {
+          LoggerService.instance.warning('Attempted to send message but client is not connected');
         }
       }
     } catch (e) {
-      print('Message send error: $e');
+      LoggerService.instance.error('Message send error: $e');
     }
   }
 

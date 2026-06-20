@@ -1,0 +1,22 @@
+[
+  {"id": 1, "code": "S1", "name": "Salon 1", "area": "Salon"},
+  {"id": 2, "code": "S2", "name": "Salon 2", "area": "Salon"},
+  {"id": 3, "code": "S3", "name": "Salon 3", "area": "Salon"},
+  {"id": 4, "code": "S4", "name": "Salon 4", "area": "Salon"},
+  {"id": 5, "code": "S5", "name": "Salon 5", "area": "Salon"},
+  {"id": 6, "code": "S6", "name": "Salon 1", "area": "Salon"},
+  {"id": 7, "code": "S7", "name": "Salon 2", "area": "Salon"},
+  {"id": 8, "code": "S8", "name": "Salon 3", "area": "Salon"},
+  {"id": 9, "code": "S9", "name": "Salon 4", "area": "Salon"},
+  {"id": 10, "code": "S10", "name": "Salon 5", "area": "Salon"},
+  {"id": 11, "code": "B1", "name": "Bahçe 1", "area": "Bahçe"},
+  {"id": 12, "code": "B2", "name": "Bahçe 2", "area": "Bahçe"},
+  {"id": 13, "code": "B3", "name": "Bahçe 3", "area": "Bahçe"},
+  {"id": 14, "code": "B4", "name": "Bahçe 4", "area": "Bahçe"},
+  {"id": 15, "code": "B5", "name": "Bahçe 5", "area": "Bahçe"},
+  {"id": 16, "code": "Y1", "name": "Yol 1", "area": "Yol"},
+  {"id": 17, "code": "Y2", "name": "Yol 2", "area": "Yol"},
+  {"id": 18, "code": "Y3", "name": "Yol 3", "area": "Yol"},
+  {"id": 19, "code": "Y4", "name": "Yol 4", "area": "Yol"},
+  {"id": 20, "code": "Y5", "name": "Yol 5", "area": "Yol"}
+]

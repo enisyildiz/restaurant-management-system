@@ -1,3 +1,4 @@
+import 'dart:math' as dart_math;
 import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
 import '../models/table_model.dart';
@@ -59,6 +60,11 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
                 selectedIcon: Icon(Icons.list_alt),
                 label: Text('Tüm Satışlar'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.bug_report_outlined),
+                selectedIcon: Icon(Icons.bug_report),
+                label: Text('Test Verisi'),
+              ),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
@@ -79,6 +85,8 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
         return const _DailySummaryPage();
       case 2:
         return const _AllSalesPage();
+      case 3:
+        return _MockDataPage(controller: widget.controller);
       default:
         return const Center(child: Text('Sayfa bulunamadı'));
     }
@@ -245,7 +253,7 @@ class _DailySummaryPageState extends State<_DailySummaryPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Günlük Özet (Bugün)',
+            'Bugünün Özeti',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.textDark),
           ),
           const SizedBox(height: 8),
@@ -336,38 +344,109 @@ class _AllSalesPageState extends State<_AllSalesPage> {
       if (dateStr == null) return false;
       final date = DateTime.tryParse(dateStr);
       if (date == null) return false;
-      
-      return date.isAfter(startDate!) && date.isBefore(endDate!);
+      return date.compareTo(startDate!) >= 0 && date.compareTo(endDate!) <= 0;
     }).toList();
   }
 
   Future<void> _selectDateRange() async {
-    final picked = await showDateRangePicker(
+    DateTime tempStart = startDate ?? DateTime.now();
+    DateTime tempEnd = endDate ?? DateTime.now();
+
+    final result = await showDialog<bool>(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-      initialDateRange: startDate != null && endDate != null 
-          ? DateTimeRange(start: startDate!, end: endDate!) 
-          : null,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppTheme.primary,
-              onPrimary: Colors.white,
-              surface: AppTheme.surfaceLight,
-              onSurface: AppTheme.textDark,
-            ),
-          ),
-          child: child!,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppTheme.surfaceLight,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Tarih Aralığı Seç', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      tileColor: AppTheme.primary.withOpacity(0.05),
+                      title: const Text('Başlangıç Tarihi', style: TextStyle(color: AppTheme.textMuted)),
+                      subtitle: Text('${tempStart.day.toString().padLeft(2, '0')}.${tempStart.month.toString().padLeft(2, '0')}.${tempStart.year}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+                      trailing: const Icon(Icons.calendar_today, color: AppTheme.primary),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: tempStart,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(const Duration(days: 1)),
+                          builder: (context, child) => Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.light(primary: AppTheme.primary),
+                            ),
+                            child: child!,
+                          ),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => tempStart = picked);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      tileColor: AppTheme.primary.withOpacity(0.05),
+                      title: const Text('Bitiş Tarihi', style: TextStyle(color: AppTheme.textMuted)),
+                      subtitle: Text('${tempEnd.day.toString().padLeft(2, '0')}.${tempEnd.month.toString().padLeft(2, '0')}.${tempEnd.year}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+                      trailing: const Icon(Icons.calendar_today, color: AppTheme.primary),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: tempEnd,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now().add(const Duration(days: 1)),
+                          builder: (context, child) => Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.light(primary: AppTheme.primary),
+                            ),
+                            child: child!,
+                          ),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => tempEnd = picked);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('İptal', style: TextStyle(color: AppTheme.textMuted)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary, foregroundColor: Colors.white),
+                  onPressed: () {
+                    if (tempStart.isAfter(tempEnd)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Başlangıç tarihi bitiş tarihinden sonra olamaz!'), backgroundColor: Colors.red),
+                      );
+                      return;
+                    }
+                    Navigator.pop(context, true);
+                  },
+                  child: const Text('Uygula'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    if (picked != null) {
+    if (result == true) {
       setState(() {
-        startDate = DateTime(picked.start.year, picked.start.month, picked.start.day);
-        endDate = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+        startDate = DateTime(tempStart.year, tempStart.month, tempStart.day);
+        endDate = DateTime(tempEnd.year, tempEnd.month, tempEnd.day, 23, 59, 59);
         _applyFilter();
       });
     }
@@ -389,13 +468,17 @@ class _AllSalesPageState extends State<_AllSalesPage> {
     showDialog(
       context: context,
       builder: (context) {
+        final String detailTitle = receipt['table_code'] != null 
+            ? '${receipt['table_code']} - ${receipt['table_name']} (${receipt['table_area']})' 
+            : '${receipt['table_name']}';
+        
         return AlertDialog(
           backgroundColor: AppTheme.background,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Adisyon Detayı - ${receipt['table_name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('Adisyon Detayı - $detailTitle', style: const TextStyle(fontWeight: FontWeight.bold)),
               IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () => Navigator.pop(context),
@@ -436,7 +519,7 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Nakit Ödeme:', style: TextStyle(color: AppTheme.pastelGreen, fontWeight: FontWeight.bold)),
-                    Text('${(receipt['cash_paid'] as num).toStringAsFixed(2)} ₺', style: const TextStyle(color: AppTheme.pastelGreen, fontWeight: FontWeight.bold)),
+                    Text('${(receipt['cash_paid'] as num?)?.toStringAsFixed(2) ?? "0.00"} ₺', style: const TextStyle(color: AppTheme.pastelGreen, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -444,7 +527,7 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Kart Ödeme:', style: TextStyle(color: AppTheme.pastelBlue, fontWeight: FontWeight.bold)),
-                    Text('${(receipt['card_paid'] as num).toStringAsFixed(2)} ₺', style: const TextStyle(color: AppTheme.pastelBlue, fontWeight: FontWeight.bold)),
+                    Text('${(receipt['card_paid'] as num?)?.toStringAsFixed(2) ?? "0.00"} ₺', style: const TextStyle(color: AppTheme.pastelBlue, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const Divider(height: 32),
@@ -480,8 +563,8 @@ class _AllSalesPageState extends State<_AllSalesPage> {
     double totalCard = 0;
     for (var r in filteredReceipts) {
       totalAmount += (r['total_amount'] as num).toDouble();
-      totalCash += (r['cash_paid'] as num).toDouble();
-      totalCard += (r['card_paid'] as num).toDouble();
+      totalCash += (r['cash_paid'] as num?)?.toDouble() ?? 0.0;
+      totalCard += (r['card_paid'] as num?)?.toDouble() ?? 0.0;
     }
 
     return Padding(
@@ -503,7 +586,7 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                     icon: const Icon(Icons.date_range),
                     label: Text(
                       startDate != null && endDate != null
-                          ? '${startDate!.day}.${startDate!.month}.${startDate!.year} - ${endDate!.day}.${endDate!.month}.${endDate!.year}'
+                          ? '${startDate!.day.toString().padLeft(2, '0')}.${startDate!.month.toString().padLeft(2, '0')}.${startDate!.year}  -  ${endDate!.day.toString().padLeft(2, '0')}.${endDate!.month.toString().padLeft(2, '0')}.${endDate!.year}'
                           : 'Tarih Seç',
                     ),
                     style: OutlinedButton.styleFrom(
@@ -562,6 +645,10 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                 separatorBuilder: (context, index) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final r = filteredReceipts[index];
+                  final String tableTitle = r['table_code'] != null 
+                      ? '${r['table_code']} - ${r['table_name']}' 
+                      : '${r['table_name']}';
+                  
                   return ListTile(
                     onTap: () => _showSaleDetails(r),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -569,7 +656,7 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                       backgroundColor: AppTheme.pastelGreen.withOpacity(0.2),
                       child: const Icon(Icons.receipt, color: AppTheme.pastelGreen),
                     ),
-                    title: Text('${r['table_name']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(tableTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text('Tarih: ${_formatDate(r['date_closed'])}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -608,3 +695,95 @@ class _AllSalesPageState extends State<_AllSalesPage> {
     );
   }
 }
+
+// --------------------------------------------------------------------
+// TEST VERİSİ OLUŞTURMA SAYFASI
+// --------------------------------------------------------------------
+class _MockDataPage extends StatefulWidget {
+  final RestaurantController controller;
+  const _MockDataPage({required this.controller});
+
+  @override
+  State<_MockDataPage> createState() => _MockDataPageState();
+}
+
+class _MockDataPageState extends State<_MockDataPage> {
+  bool isGenerating = false;
+
+  Future<void> _generateData() async {
+    setState(() => isGenerating = true);
+    final db = await DatabaseService.instance.database;
+    final random = dart_math.Random();
+    final now = DateTime.now();
+
+    for (int i = 0; i < 100; i++) {
+      final daysAgo = random.nextInt(365);
+      final hour = random.nextInt(14) + 10; // 10:00 - 23:59
+      final minute = random.nextInt(60);
+      
+      final date = now.subtract(Duration(days: daysAgo));
+      final randomDate = DateTime(date.year, date.month, date.day, hour, minute);
+      
+      final table = widget.controller.tables[random.nextInt(widget.controller.tables.length)];
+      
+      final amount = 100 + random.nextInt(900).toDouble(); // 100.0 - 999.0
+      final isCash = random.nextBool();
+      final cashPaid = isCash ? amount : 0.0;
+      final cardPaid = isCash ? 0.0 : amount;
+
+      final receiptId = await db.insert('receipts', {
+        'table_id': table.id,
+        'table_code': table.code,
+        'table_area': table.area,
+        'table_name': table.name,
+        'total_amount': amount,
+        'total_paid': amount,
+        'cash_paid': cashPaid,
+        'card_paid': cardPaid,
+        'date_closed': randomDate.toIso8601String(),
+      });
+
+      // Insert some random items
+      final itemCount = random.nextInt(3) + 1;
+      for (int j = 0; j < itemCount; j++) {
+        final itemPrice = amount / itemCount;
+        await db.insert('receipt_items', {
+          'receipt_id': receiptId,
+          'product_id': 'mock_${random.nextInt(100)}',
+          'product_name': 'Örnek Ürün ${random.nextInt(100)}',
+          'product_category': 'Yiyecek',
+          'quantity': 1,
+          'price': itemPrice,
+        });
+      }
+    }
+
+    setState(() => isGenerating = false);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Geçmişe dönük 100 adet rastgele satış eklendi!'), backgroundColor: AppTheme.pastelGreen),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: isGenerating 
+        ? const CircularProgressIndicator()
+        : ElevatedButton.icon(
+            icon: const Icon(Icons.add_chart),
+            label: const Text('100 Rastgele Satış Ekle (Son 1 Yıl)'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+              textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            onPressed: widget.controller.tables.isEmpty ? null : _generateData,
+          ),
+    );
+  }
+}
+

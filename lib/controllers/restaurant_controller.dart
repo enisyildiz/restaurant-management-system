@@ -12,6 +12,7 @@ import '../models/payment_record.dart';
 import '../models/user_role.dart';
 import '../services/network_service.dart';
 import '../services/database_service.dart';
+import '../services/logger_service.dart';
 import '../globals.dart';
 
 enum PrintTarget { 
@@ -33,7 +34,6 @@ class RestaurantController extends ChangeNotifier {
     if (username == 'admin' && password == 'admin123') {
       currentUser = const User(username: 'admin', role: UserRole.admin);
       startupTime = DateTime.now().millisecondsSinceEpoch;
-      DatabaseService.instance.initPrefix('admin');
       _initNetwork();
       notifyListeners();
       return true;
@@ -124,13 +124,22 @@ class RestaurantController extends ChangeNotifier {
     notifyListeners();
   }
 
-  final List<TableModel> tables = List.generate(
-    15,
-    (index) => TableModel(id: index + 1, name: 'Masa ${index + 1}'),
-  );
+  List<TableModel> tables = [];
 
   RestaurantController() {
     loadMenu();
+    loadTables();
+  }
+
+  Future<void> loadTables() async {
+    try {
+      final String response = await rootBundle.loadString('assets/tables.json');
+      final List<dynamic> data = json.decode(response);
+      tables = data.map((jsonItem) => TableModel.fromJson(jsonItem)).toList();
+      notifyListeners();
+    } catch (e) {
+      LoggerService.instance.error('Error loading tables.json: $e');
+    }
   }
 
   Future<void> loadMenu() async {

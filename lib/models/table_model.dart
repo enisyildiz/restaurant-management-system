@@ -5,14 +5,18 @@ enum TableStatus { empty, occupied }
 
 class TableModel {
   final int id;
+  final String code;
   final String name;
+  final String area;
   TableStatus status;
   List<OrderItem> orders;
   List<PaymentRecord> payments;
 
   TableModel({
     required this.id,
+    required this.code,
     required this.name,
+    required this.area,
     this.status = TableStatus.empty,
     List<OrderItem>? orders,
     List<PaymentRecord>? payments,
@@ -41,7 +45,9 @@ class TableModel {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'code': code,
       'name': name,
+      'area': area,
       'status': status.toString(),
       'orders': orders.map((e) => e.toJson()).toList(),
       'payments': payments.map((e) => e.toJson()).toList(),
@@ -51,7 +57,9 @@ class TableModel {
   factory TableModel.fromJson(Map<String, dynamic> json) {
     return TableModel(
       id: json['id'] as int,
+      code: json['code'] ?? json['name'],
       name: json['name'] as String,
+      area: json['area'] ?? 'Genel',
       status: TableStatus.values.firstWhere(
         (e) => e.toString() == json['status'],
         orElse: () => TableStatus.empty,

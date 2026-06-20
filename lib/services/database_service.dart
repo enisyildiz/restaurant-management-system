@@ -9,21 +9,12 @@ import '../models/table_model.dart';
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
   Database? _database;
-  String _dbPrefix = 'default';
 
   DatabaseService._init();
 
-  Future<void> initPrefix(String prefix) async {
-    _dbPrefix = prefix;
-    if (_database != null) {
-      await _database!.close();
-      _database = null;
-    }
-  }
-
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('restaurant_database_$_dbPrefix.db');
+    _database = await _initDB('restaurant_database.db');
     return _database!;
   }
 
@@ -43,8 +34,9 @@ class DatabaseService {
     return await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onCreate: _createDB,
+        onUpgrade: _upgradeDB,
       ),
     );
   }
@@ -54,6 +46,8 @@ class DatabaseService {
 CREATE TABLE receipts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   table_id INTEGER NOT NULL,
+  table_code TEXT,
+  table_area TEXT,
   table_name TEXT NOT NULL,
   total_amount REAL NOT NULL,
   total_paid REAL NOT NULL,
@@ -77,6 +71,13 @@ CREATE TABLE receipt_items (
 ''');
   }
 
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE receipts ADD COLUMN table_code TEXT;');
+      await db.execute('ALTER TABLE receipts ADD COLUMN table_area TEXT;');
+    }
+  }
+
   Future<void> saveClosedTable(TableModel table) async {
     // BURASI ÇOK KRİTİK: Veritabanı işlemi asenkron olduğu için (await kullandığımız için)
     // işlem bitene kadar UI thread'i masayı temizliyor ve her şeyi 0 hesaplıyordu.
@@ -86,6 +87,8 @@ CREATE TABLE receipt_items (
     final double cashPaid = table.totalCashPaid;
     final double cardPaid = table.totalCardPaid;
     final int tableId = table.id;
+    final String tableCode = table.code;
+    final String tableArea = table.area;
     final String tableName = table.name;
     
     // Ürünleri de kopyalıyoruz çünkü asıl liste anında siliniyor!
@@ -101,6 +104,8 @@ CREATE TABLE receipt_items (
     
     final receiptId = await db.insert('receipts', {
       'table_id': tableId,
+      'table_code': tableCode,
+      'table_area': tableArea,
       'table_name': tableName,
       'total_amount': totalAmount,
       'total_paid': totalPaid,

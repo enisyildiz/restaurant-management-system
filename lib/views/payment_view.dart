@@ -174,10 +174,9 @@ class _PaymentViewState extends State<PaymentView> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildQuickAmountBtn(remaining, 'Tümü'),
-                          _buildQuickAmountBtn(50, '50 ₺'),
-                          _buildQuickAmountBtn(100, '100 ₺'),
-                          _buildQuickAmountBtn(200, '200 ₺'),
+                          _buildQuickAmountBtn((currentTotal * 0.25) > remaining ? remaining : (currentTotal * 0.25), '1/4'),
+                          _buildQuickAmountBtn((currentTotal * 0.50) > remaining ? remaining : (currentTotal * 0.50), '1/2'),
+                          _buildQuickAmountBtn(remaining, 'Tamamı'),
                         ],
                       ),
                       const SizedBox(height: 24),
