@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
+import '../models/table_model.dart';
 import '../theme/theme.dart';
 import 'payment_view.dart';
 
@@ -192,10 +193,19 @@ class OrderView extends StatelessWidget {
                                       onPressed: table.orders.isEmpty
                                           ? null
                                           : () {
-                                                  controller.checkoutTable(tableId);
-                                                  Navigator.pop(context);
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('Sipariş tamamlandı ve masa kapatıldı.')),
+                                              if (table.remainingAmount > 0) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('Ödemenin tamamı alınmadan hesap kapatılamaz!'),
+                                                    backgroundColor: AppTheme.pastelRed,
+                                                  ),
+                                                );
+                                                return;
+                                              }
+                                              controller.checkoutTable(tableId);
+                                              Navigator.pop(context);
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Sipariş tamamlandı ve masa kapatıldı.')),
                                               );
                                             },
                                       child: const Text('Hesabı Kapat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -208,17 +218,14 @@ class OrderView extends StatelessWidget {
                                     height: 50,
                                     child: ElevatedButton(
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.pastelYellow, 
+                                        backgroundColor: AppTheme.pastelBlue, // Renk değiştirildi
                                         foregroundColor: AppTheme.textDark,
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                       ),
                                       onPressed: table.orders.isEmpty
                                           ? null
                                           : () {
-                                              //controller.printReceipt(tableId, PrintTarget.cashier);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('No implementation')),
-                                              );
+                                              _showMoveTableDialog(context, controller, table);
                                             },
                                       child: const Text('Masayı Taşı', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                     ),
@@ -339,6 +346,55 @@ class OrderView extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  void _showMoveTableDialog(BuildContext context, RestaurantController controller, TableModel currentTable) {
+    final emptyTables = controller.tables.where((t) => t.status == TableStatus.empty).toList();
+    if (emptyTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Taşınabilecek boş masa bulunmuyor.'),
+          backgroundColor: AppTheme.pastelRed,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.surfaceLight,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Masa Taşı', style: TextStyle(color: AppTheme.textDark)),
+          content: SizedBox(
+            width: 300,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: emptyTables.length,
+              itemBuilder: (context, index) {
+                final target = emptyTables[index];
+                return ListTile(
+                  title: Text(target.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  leading: const Icon(Icons.table_restaurant, color: AppTheme.pastelBlue),
+                  onTap: () {
+                    controller.moveTable(currentTable.id, target.id);
+                    Navigator.pop(context); // close dialog
+                    Navigator.pop(context); // close order view
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${currentTable.name}, ${target.name} masasına taşındı.'),
+                        backgroundColor: AppTheme.pastelGreen,
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

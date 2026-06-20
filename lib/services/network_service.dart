@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:shelf/shelf.dart';
@@ -11,10 +12,13 @@ import '../globals.dart';
 typedef OnMessageReceived = void Function(Map<String, dynamic> data);
 typedef OnErrorCallback = void Function(String error);
 
+typedef OnConnectedCallback = void Function();
+
 class NetworkService {
   final UserRole role;
   final OnMessageReceived onMessageReceived;
   final OnErrorCallback onError;
+  final OnConnectedCallback onConnected;
 
   // Server state
   HttpServer? _server;
@@ -22,11 +26,14 @@ class NetworkService {
 
   // Client state
   WebSocketChannel? _clientChannel;
+  Timer? _reconnectTimer;
+  bool _isConnected = false;
 
   NetworkService({
     required this.role,
     required this.onMessageReceived,
     required this.onError,
+    required this.onConnected,
   });
 
   Future<void> start() async {
@@ -46,6 +53,8 @@ class NetworkService {
 
     final wsHandler = webSocketHandler((WebSocketChannel webSocket) {
       _clients.add(webSocket);
+      onConnected();
+      
       webSocket.stream.listen(
         (message) {
           final data = jsonDecode(message);
@@ -79,9 +88,21 @@ class NetworkService {
   }
 
   Future<void> _connectAsClient() async {
+    _tryConnect();
+    _reconnectTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!_isConnected) {
+        _tryConnect();
+      }
+    });
+  }
+
+  void _tryConnect() {
     try {
       final wsUrl = Uri.parse('ws://$serverIp:8080/ws');
       _clientChannel = WebSocketChannel.connect(wsUrl);
+      
+      _isConnected = true;
+      onConnected();
       
       _clientChannel!.stream.listen(
         (message) {
@@ -89,17 +110,17 @@ class NetworkService {
           onMessageReceived(data);
         },
         onError: (error) {
-          print('WebSocket Client Error: $error');
-          onError('Sunucuya bağlanılamadı. Ana bilgisayar açık mı?');
+          _isConnected = false;
+          onError('Sunucuya bağlanılamadı. Yeniden deneniyor...');
         },
         onDone: () {
-          print('WebSocket Client Disconnected');
-          onError('Sunucu bağlantısı koptu.');
+          _isConnected = false;
+          onError('Sunucu bağlantısı koptu. Yeniden deneniyor...');
         },
       );
     } catch (e) {
-      print('Error connecting to Host: $e');
-      onError('Sunucuya bağlanılamadı. Ana bilgisayar açık mı?');
+      _isConnected = false;
+      onError('Bağlantı hatası: $e');
     }
   }
 
@@ -112,7 +133,9 @@ class NetworkService {
           client.sink.add(message);
         }
       } else {
-        _clientChannel?.sink.add(message);
+        if (_isConnected && _clientChannel != null) {
+          _clientChannel!.sink.add(message);
+        }
       }
     } catch (e) {
       print('Message send error: $e');
@@ -120,6 +143,7 @@ class NetworkService {
   }
 
   void dispose() {
+    _reconnectTimer?.cancel();
     _server?.close(force: true);
     for (final client in _clients) {
       client.sink.close();

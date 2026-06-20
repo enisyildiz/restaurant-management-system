@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/restaurant_controller.dart';
-import '../models/order_item.dart';
 import '../models/payment_record.dart';
+import '../theme/theme.dart';
 
 class PaymentView extends StatefulWidget {
   final RestaurantController controller;
@@ -23,11 +23,7 @@ class _PaymentViewState extends State<PaymentView> {
 
   double get enteredAmount {
     final parsed = double.tryParse(amountInput);
-
-    if (parsed == null || parsed <= 0) {
-      return 0;
-    }
-
+    if (parsed == null || parsed <= 0) return 0;
     return parsed;
   }
 
@@ -37,26 +33,20 @@ class _PaymentViewState extends State<PaymentView> {
         amountInput = '0';
         return;
       }
-
       if (value == '⌫') {
         if (amountInput.length <= 1) {
           amountInput = '0';
         } else {
           amountInput = amountInput.substring(0, amountInput.length - 1);
         }
-
         return;
       }
-
       if (amountInput == '0') {
-        amountInput = value;
+        if (value != '0') amountInput = value;
       } else {
         amountInput += value;
       }
-
-      if (amountInput.length > 7) {
-        amountInput = amountInput.substring(0, 7);
-      }
+      if (amountInput.length > 7) amountInput = amountInput.substring(0, 7);
     });
   }
 
@@ -80,11 +70,11 @@ class _PaymentViewState extends State<PaymentView> {
     if (remaining <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Payment completed. Table cleared.'),
+          content: Text('Ödeme tamamlandı. Masa tamamen ödendi!'),
+          backgroundColor: AppTheme.pastelGreen,
         ),
       );
-
-      Navigator.popUntil(context, (route) => route.isFirst);
+      Navigator.pop(context);
       return;
     }
 
@@ -98,469 +88,269 @@ class _PaymentViewState extends State<PaymentView> {
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
-        final orders = widget.controller.ordersForTable(widget.tableId);
-        final payments = widget.controller.paymentsForTable(widget.tableId);
-        final total = widget.controller.totalForTable(widget.tableId);
-        final paid = widget.controller.totalPaidForTable(widget.tableId);
         final remaining = widget.controller.remainingForTable(widget.tableId);
-        final cashPaid = widget.controller.cashPaidForTable(widget.tableId);
-        final cardPaid =
-            widget.controller.creditCardPaidForTable(widget.tableId);
+        final currentTotal = widget.controller.totalForTable(widget.tableId);
+        final totalPaid = widget.controller.totalPaidForTable(widget.tableId);
 
         return Scaffold(
+          backgroundColor: AppTheme.background,
           appBar: AppBar(
-            title: Text('Payment - Table ${widget.tableId}'),
+            title: Text('Ödeme - Masa ${widget.tableId}'),
+            backgroundColor: AppTheme.surfaceLight,
+            elevation: 1,
+            iconTheme: const IconThemeData(color: AppTheme.textDark),
+            titleTextStyle: const TextStyle(color: AppTheme.textDark, fontSize: 20, fontWeight: FontWeight.bold),
           ),
-          body: Row(
-            children: [
-              Expanded(
-                flex: 4,
-                child: _PaymentBillPanel(
-                  orders: orders,
-                  payments: payments,
-                  total: total,
-                  paid: paid,
-                  remaining: remaining,
-                  cashPaid: cashPaid,
-                  cardPaid: cardPaid,
-                ),
-              ),
-
-              const VerticalDivider(width: 1),
-
-              Expanded(
-                flex: 4,
-                child: _PaymentAmountPanel(
-                  amountInput: amountInput,
-                  remaining: remaining,
-                  onNumpadPressed: _onNumpadPressed,
-                  onShortcutPressed: _setAmount,
-                ),
-              ),
-
-              const VerticalDivider(width: 1),
-
-              Expanded(
-                flex: 2,
-                child: _PaymentMethodPanel(
-                  enteredAmount: enteredAmount,
-                  remaining: remaining,
-                  onCashPressed: () => _takePayment(PaymentMethod.cash),
-                  onCardPressed: () => _takePayment(PaymentMethod.creditCard),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _PaymentBillPanel extends StatelessWidget {
-  final List<OrderItem> orders;
-  final List<PaymentRecord> payments;
-  final double total;
-  final double paid;
-  final double remaining;
-  final double cashPaid;
-  final double cardPaid;
-
-  const _PaymentBillPanel({
-    required this.orders,
-    required this.payments,
-    required this.total,
-    required this.paid,
-    required this.remaining,
-    required this.cashPaid,
-    required this.cardPaid,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          const Text(
-            'Bill Details',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          Expanded(
-  child: ListView(
-    children: [
-      const Text(
-        'Orders',
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-
-      const SizedBox(height: 6),
-
-      for (final item in orders)
-        Card(
-          child: ListTile(
-            title: Text(item.product.name),
-            subtitle: Text(
-              '${item.quantity} x ${item.product.price.toStringAsFixed(2)}',
-            ),
-            trailing: Text(
-              item.totalPrice.toStringAsFixed(2),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-
-      if (payments.isNotEmpty) ...[
-        const SizedBox(height: 16),
-
-        const Text(
-          'Payment History',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-
-        const SizedBox(height: 6),
-
-        for (final payment in payments)
-          Card(
-            child: ListTile(
-              leading: Icon(
-                payment.method == PaymentMethod.cash
-                    ? Icons.payments
-                    : Icons.credit_card,
-              ),
-              title: Text(payment.method.label),
-              trailing: Text(
-                payment.amount.toStringAsFixed(2),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-      ],
-    ],
-  ),
-),
-
-          const Divider(),
-
-          _TotalRow(label: 'Total', value: total),
-          _TotalRow(label: 'Paid', value: paid),
-          _TotalRow(label: 'Remaining', value: remaining, isImportant: true),
-
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              Expanded(
-                child: _PaymentSummaryCard(
-                  title: 'Cash',
-                  amount: cashPaid,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _PaymentSummaryCard(
-                  title: 'Credit Card',
-                  amount: cardPaid,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PaymentAmountPanel extends StatelessWidget {
-  final String amountInput;
-  final double remaining;
-  final void Function(String value) onNumpadPressed;
-  final void Function(double amount) onShortcutPressed;
-
-  const _PaymentAmountPanel({
-    required this.amountInput,
-    required this.remaining,
-    required this.onNumpadPressed,
-    required this.onShortcutPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final half = remaining / 2;
-    final quarter = remaining / 4;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          const Text(
-            'Payment Amount',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              amountInput,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 42,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: remaining <= 0
-                      ? null
-                      : () => onShortcutPressed(quarter),
-                  child: const Text('1/4'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed:
-                      remaining <= 0 ? null : () => onShortcutPressed(half),
-                  child: const Text('1/2'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: remaining <= 0
-                      ? null
-                      : () => onShortcutPressed(remaining),
-                  child: const Text('Full'),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          Expanded(
-            child: _PaymentNumpad(
-              onPressed: onNumpadPressed,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PaymentMethodPanel extends StatelessWidget {
-  final double enteredAmount;
-  final double remaining;
-  final VoidCallback onCashPressed;
-  final VoidCallback onCardPressed;
-
-  const _PaymentMethodPanel({
-    required this.enteredAmount,
-    required this.remaining,
-    required this.onCashPressed,
-    required this.onCardPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final canPay = enteredAmount > 0 && remaining > 0;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          const Text(
-            'Payment Type',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          Expanded(
-            child: Column(
+          body: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Row(
               children: [
                 Expanded(
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: canPay ? onCashPressed : null,
-                      icon: const Icon(Icons.payments),
-                      label: const Text(
-                        'Cash',
-                        style: TextStyle(fontSize: 20),
-                      ),
+                  flex: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceLight,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.textMuted.withOpacity(0.1)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Hesap Özeti',
+                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                        ),
+                        const SizedBox(height: 32),
+                        _buildSummaryRow('Toplam Tutar', currentTotal, AppTheme.textDark, 20),
+                        const SizedBox(height: 16),
+                        _buildSummaryRow('Alınan Ödeme', totalPaid, AppTheme.pastelGreen, 20),
+                        const Divider(height: 48, thickness: 2),
+                        _buildSummaryRow('Kalan Tutar', remaining, AppTheme.pastelRed, 28, isBold: true),
+                        const SizedBox(height: 32),
+                        const Text('Alınan Ödemeler', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textMuted)),
+                        const SizedBox(height: 16),
+                        Expanded(
+                          child: widget.controller.tables.firstWhere((t) => t.id == widget.tableId).payments.isEmpty
+                              ? const Text('Henüz ödeme alınmadı.', style: TextStyle(color: AppTheme.textMuted))
+                              : ListView.builder(
+                                  itemCount: widget.controller.tables.firstWhere((t) => t.id == widget.tableId).payments.length,
+                                  itemBuilder: (context, index) {
+                                    final p = widget.controller.tables.firstWhere((t) => t.id == widget.tableId).payments[index];
+                                    final isCash = p.method == PaymentMethod.cash;
+                                    return ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: Icon(isCash ? Icons.money : Icons.credit_card, color: isCash ? AppTheme.pastelGreen : AppTheme.pastelBlue),
+                                      title: Text('${p.amount.toStringAsFixed(2)} ₺', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      subtitle: Text(isCash ? 'Nakit' : 'Kredi Kartı'),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 16),
-
+                const SizedBox(width: 32),
                 Expanded(
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.tonalIcon(
-                      onPressed: canPay ? onCardPressed : null,
-                      icon: const Icon(Icons.credit_card),
-                      label: const Text(
-                        'Credit Card',
-                        style: TextStyle(fontSize: 20),
+                  flex: 6,
+                  child: Column(
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceLight,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.primary.withOpacity(0.3), width: 2),
+                        ),
+                        child: Text(
+                          '$amountInput ₺',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildQuickAmountBtn(remaining, 'Tümü'),
+                          _buildQuickAmountBtn(50, '50 ₺'),
+                          _buildQuickAmountBtn(100, '100 ₺'),
+                          _buildQuickAmountBtn(200, '200 ₺'),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Expanded(child: _buildNumBtn('1')), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('2')), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('3')),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Expanded(child: _buildNumBtn('4')), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('5')), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('6')),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Expanded(child: _buildNumBtn('7')), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('8')), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('9')),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Expanded(child: _buildNumBtn('C', color: AppTheme.pastelRed)), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('0')), const SizedBox(width: 16),
+                                  Expanded(child: _buildNumBtn('⌫', color: AppTheme.pastelYellow)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildActionBtn(
+                              'Nakit',
+                              Icons.money,
+                              AppTheme.pastelGreen,
+                              () => _takePayment(PaymentMethod.cash),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _buildActionBtn(
+                              'Kredi Kartı',
+                              Icons.credit_card,
+                              AppTheme.pastelBlue,
+                              () => _takePayment(PaymentMethod.creditCard),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PaymentNumpad extends StatelessWidget {
-  final void Function(String value) onPressed;
-
-  const _PaymentNumpad({
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const rows = [
-      ['7', '8', '9'],
-      ['4', '5', '6'],
-      ['1', '2', '3'],
-      ['C', '0', '⌫'],
-    ];
-
-    return Column(
-      children: rows.map((row) {
-        return Expanded(
-          child: Row(
-            children: row.map((value) {
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: FilledButton.tonal(
-                    onPressed: () => onPressed(value),
-                    child: Text(
-                      value,
-                      style: const TextStyle(fontSize: 20),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
         );
-      }).toList(),
+      },
     );
   }
-}
 
-class _TotalRow extends StatelessWidget {
-  final String label;
-  final double value;
-  final bool isImportant;
-
-  const _TotalRow({
-    required this.label,
-    required this.value,
-    this.isImportant = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            '$label:',
-            style: TextStyle(
-              fontSize: isImportant ? 22 : 18,
-              fontWeight: isImportant ? FontWeight.bold : FontWeight.w500,
-            ),
+  Widget _buildSummaryRow(String label, double amount, Color valueColor, double fontSize, {bool isBold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: fontSize * 0.8,
+            color: AppTheme.textMuted,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
           ),
-          Text(
-            value.toStringAsFixed(2),
-            style: TextStyle(
-              fontSize: isImportant ? 22 : 18,
-              fontWeight: isImportant ? FontWeight.bold : FontWeight.w500,
-            ),
+        ),
+        Text(
+          '${amount.toStringAsFixed(2)} ₺',
+          style: TextStyle(
+            fontSize: fontSize,
+            color: valueColor,
+            fontWeight: FontWeight.bold,
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickAmountBtn(double amount, String label) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.surfaceLight,
+            foregroundColor: AppTheme.primary,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: AppTheme.primary.withOpacity(0.3)),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+          onPressed: () => _setAmount(amount),
+          child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
       ),
     );
   }
-}
 
-class _PaymentSummaryCard extends StatelessWidget {
-  final String title;
-  final double amount;
-
-  const _PaymentSummaryCard({
-    required this.title,
-    required this.amount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
+  Widget _buildNumBtn(String value, {Color? color}) {
+    final bgColor = color?.withOpacity(0.2) ?? AppTheme.surfaceLight;
+    final fgColor = color ?? AppTheme.textDark;
+    
+    return InkWell(
+      onTap: () => _onNumpadPressed(value),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.textMuted.withOpacity(0.1)),
+        ),
+        child: Center(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: fgColor,
+            ),
+          ),
+        ),
       ),
-      child: Column(
-        children: [
-          Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            amount.toStringAsFixed(2),
-            style: const TextStyle(fontSize: 18),
-          ),
-        ],
+    );
+  }
+
+  Widget _buildActionBtn(String label, IconData icon, Color color, VoidCallback onPressed) {
+    return SizedBox(
+      height: 70,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: AppTheme.textDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 2,
+        ),
+        onPressed: onPressed,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 28),
+            const SizedBox(width: 12),
+            Text(label, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }

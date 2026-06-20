@@ -48,6 +48,25 @@ class TableView extends StatelessWidget {
               itemBuilder: (context, index) {
                 final table = controller.tables[index];
                 final isEmpty = table.status == TableStatus.empty;
+                final isFullyPaid = !isEmpty && controller.remainingForTable(table.id) <= 0;
+
+                Color bgColor;
+                Color borderColor;
+                String statusText;
+
+                if (isEmpty) {
+                  bgColor = AppTheme.pastelGreen;
+                  borderColor = AppTheme.pastelGreen;
+                  statusText = 'BOŞ';
+                } else if (isFullyPaid) {
+                  bgColor = AppTheme.pastelYellow;
+                  borderColor = AppTheme.pastelYellow;
+                  statusText = 'ÖDENDİ';
+                } else {
+                  bgColor = AppTheme.pastelRed;
+                  borderColor = AppTheme.pastelRed;
+                  statusText = '${table.currentTotal.toStringAsFixed(2)} ₺';
+                }
 
                 return GestureDetector(
                   onTap: () {
@@ -64,15 +83,15 @@ class TableView extends StatelessWidget {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     decoration: BoxDecoration(
-                      color: isEmpty ? AppTheme.pastelGreen.withOpacity(0.15) : AppTheme.pastelRed.withOpacity(0.15),
+                      color: bgColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isEmpty ? AppTheme.pastelGreen.withOpacity(0.5) : AppTheme.pastelRed.withOpacity(0.5),
+                        color: borderColor.withOpacity(0.5),
                         width: 2,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: (isEmpty ? AppTheme.pastelGreen : AppTheme.pastelRed).withOpacity(0.1),
+                          color: bgColor.withOpacity(0.1),
                           blurRadius: 15,
                           offset: const Offset(0, 8),
                         ),
@@ -84,12 +103,12 @@ class TableView extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: isEmpty ? AppTheme.pastelGreen.withOpacity(0.2) : AppTheme.pastelRed.withOpacity(0.2),
+                            color: bgColor.withOpacity(0.2),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            isEmpty ? Icons.check_circle_outline : Icons.restaurant,
-                            color: isEmpty ? AppTheme.pastelGreen : AppTheme.pastelRed,
+                            isEmpty ? Icons.check_circle_outline : (isFullyPaid ? Icons.money : Icons.restaurant),
+                            color: bgColor,
                             size: 32,
                           ),
                         ),
@@ -104,11 +123,11 @@ class TableView extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          isEmpty ? 'BOŞ' : '${table.currentTotal.toStringAsFixed(2)} ₺',
+                          statusText,
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: isEmpty ? AppTheme.pastelGreen : AppTheme.pastelRed,
+                            color: bgColor,
                           ),
                         ),
                       ],

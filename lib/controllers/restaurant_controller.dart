@@ -11,6 +11,7 @@ import '../models/order_item.dart';
 import '../models/payment_record.dart';
 import '../models/user_role.dart';
 import '../services/network_service.dart';
+import '../services/database_service.dart';
 import '../globals.dart';
 
 enum PrintTarget { 
@@ -26,15 +27,20 @@ class RestaurantController extends ChangeNotifier {
 
   User? currentUser;
   NetworkService? _networkService;
+  int? startupTime;
 
   bool login(String username, String password) {
     if (username == 'admin' && password == 'admin123') {
       currentUser = const User(username: 'admin', role: UserRole.admin);
+      startupTime = DateTime.now().millisecondsSinceEpoch;
+      DatabaseService.instance.initPrefix('admin');
       _initNetwork();
       notifyListeners();
       return true;
     } else if (username == 'waiter' && password == 'waiter123') {
       currentUser = const User(username: 'waiter', role: UserRole.waiter);
+      startupTime = DateTime.now().millisecondsSinceEpoch;
+      // Garson bilgisayarında DB başlatılmıyor
       _initNetwork();
       notifyListeners();
       return true;
@@ -49,18 +55,49 @@ class RestaurantController extends ChangeNotifier {
       onError: (String error) {
         _showSnackbar(error, true);
       },
+      onConnected: _syncFullState,
     );
     _networkService!.start();
   }
 
+  void _syncFullState() {
+    if (_networkService != null) {
+      _networkService!.sendMessage({
+        'action': 'handshake',
+        'startupTime': startupTime,
+      });
+    }
+  }
+
   void _handleNetworkMessage(Map<String, dynamic> data) {
     final action = data['action'];
-    if (action == 'add_product') {
+    
+    if (action == 'handshake') {
+      final remoteStartup = data['startupTime'] as int;
+      if (startupTime != null && startupTime! > remoteStartup) {
+        _networkService!.sendMessage({
+          'action': 'request_full_state',
+        });
+      }
+    } else if (action == 'request_full_state') {
+      _networkService!.sendMessage({
+        'action': 'full_state',
+        'tables': tables.map((t) => t.toJson()).toList(),
+      });
+    } else if (action == 'full_state') {
+      final remoteTablesData = data['tables'] as List<dynamic>;
+      final remoteTables = remoteTablesData.map((e) => TableModel.fromJson(e)).toList();
+      
+      tables.clear();
+      tables.addAll(remoteTables);
+      notifyListeners();
+      _showSnackbar('Veriler başarıyla eşitlendi.', false);
+    } else if (action == 'add_product') {
       addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
     } else if (action == 'remove_product') {
       removeProductFromTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
     } else if (action == 'checkout_table') {
-      checkoutTable(data['tableId'], fromNetwork: true);
+        checkoutTable(data['tableId'], fromNetwork: true);
     } else if (action == 'move_table') {
       moveTable(data['currentTableId'], data['targetTableId'], fromNetwork: true);
     } else if (action == 'add_payment') {
@@ -77,7 +114,6 @@ class RestaurantController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Sadece seçili kategoriye ait ürünleri döndüren getter
   List<Product> get filteredMenu {
     if (selectedCategory == 'Tümü') return _menu;
     return _menu.where((p) => p.category == selectedCategory).toList();
@@ -87,7 +123,6 @@ class RestaurantController extends ChangeNotifier {
     selectedCategory = category;
     notifyListeners();
   }
-  // --------------------------------------------------------
 
   final List<TableModel> tables = List.generate(
     15,
@@ -104,7 +139,6 @@ class RestaurantController extends ChangeNotifier {
       final List<dynamic> data = json.decode(response);
       _menu = data.map((jsonItem) => Product.fromJson(jsonItem)).toList();
       
-      // JSON yüklendikten sonra kategorileri otomatik olarak belirle
       categories = ['Tümü', ..._menu.map((e) => e.category).toSet()];
       
       isLoadingMenu = false;
@@ -116,7 +150,6 @@ class RestaurantController extends ChangeNotifier {
     }
   }
 
-  // ... (Geri kalan addProductToTable, removeProductFromTable, checkoutTable fonksiyonları aynen kalacak) ...
   void addProductToTable(int tableId, Product product, {bool fromNetwork = false}) {
     final table = tables.firstWhere((t) => t.id == tableId);
     final existingItemIndex = table.orders.indexWhere((item) => item.product.id == product.id);
@@ -164,6 +197,14 @@ class RestaurantController extends ChangeNotifier {
 
   void checkoutTable(int tableId, {bool fromNetwork = false}) {
     final table = tables.firstWhere((t) => t.id == tableId);
+    
+    // Veritabanı sadece YÖNETİCİ (Admin) bilgisayarında kayıt edilecek
+    // İster Admin kendisi kapasın (!fromNetwork), ister Garson kapasın ve ağdan gelsin (fromNetwork).
+    // İki durumda da sadece Admin DB'ye yazar. Garson asla yazmaz.
+    if (currentUser?.role == UserRole.admin && table.orders.isNotEmpty) {
+      DatabaseService.instance.saveClosedTable(table);
+    }
+
     table.orders.clear();
     table.payments.clear();
     table.status = TableStatus.empty;

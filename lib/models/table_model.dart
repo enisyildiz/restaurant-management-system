@@ -37,4 +37,33 @@ class TableModel {
   double get totalCardPaid => payments
         .where((p) => p.method == PaymentMethod.creditCard) // Sende enum adı neyse
         .fold(0.0, (sum, p) => sum + p.amount);
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'status': status.toString(),
+      'orders': orders.map((e) => e.toJson()).toList(),
+      'payments': payments.map((e) => e.toJson()).toList(),
+    };
+  }
+
+  factory TableModel.fromJson(Map<String, dynamic> json) {
+    return TableModel(
+      id: json['id'] as int,
+      name: json['name'] as String,
+      status: TableStatus.values.firstWhere(
+        (e) => e.toString() == json['status'],
+        orElse: () => TableStatus.empty,
+      ),
+      orders: (json['orders'] as List<dynamic>?)
+              ?.map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      payments: (json['payments'] as List<dynamic>?)
+              ?.map((e) => PaymentRecord.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+  }
 }
