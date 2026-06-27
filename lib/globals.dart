@@ -4,4 +4,4 @@ final GlobalKey<ScaffoldMessengerState> globalMessengerKey = GlobalKey<ScaffoldM
 
 // Bu IP adresini Admin bilgisayarının yerel ağdaki IP adresi ile değiştirin.
 // Örnek: '192.168.1.50'
-const String serverIp = '127.0.0.1';
+String serverIp = '127.0.0.1';
