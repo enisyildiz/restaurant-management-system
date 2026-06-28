@@ -12,16 +12,21 @@ class TableModel {
   List<OrderItem> orders;
   List<PaymentRecord> payments;
 
+  int? activeSessionId;
+  DateTime? seatedAt;
+
   TableModel({
-    required this.id,
-    required this.code,
-    required this.name,
-    required this.area,
-    this.status = TableStatus.empty,
-    List<OrderItem>? orders,
-    List<PaymentRecord>? payments,
-  }) : orders = orders ?? [],
-        payments = payments ?? [];
+  required this.id,
+  required this.code,
+  required this.name,
+  required this.area,
+  this.status = TableStatus.empty,
+  List<OrderItem>? orders,
+  List<PaymentRecord>? payments,
+  this.activeSessionId,
+  this.seatedAt,
+}) : orders = orders ?? [],
+      payments = payments ?? [];
 
   double get currentTotal {
     return orders.fold(0, (sum, item) => sum + item.totalPrice);
@@ -51,6 +56,8 @@ class TableModel {
       'status': status.toString(),
       'orders': orders.map((e) => e.toJson()).toList(),
       'payments': payments.map((e) => e.toJson()).toList(),
+      'activeSessionId': activeSessionId,
+      'seatedAt': seatedAt?.toIso8601String(),
     };
   }
 
@@ -72,6 +79,10 @@ class TableModel {
               ?.map((e) => PaymentRecord.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      activeSessionId: json['activeSessionId'] as int?,
+      seatedAt: json['seatedAt'] == null
+          ? null
+          : DateTime.parse(json['seatedAt'] as String),
     );
   }
 }

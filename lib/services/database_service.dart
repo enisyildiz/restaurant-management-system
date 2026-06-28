@@ -34,7 +34,7 @@ class DatabaseService {
     return await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -69,12 +69,127 @@ CREATE TABLE receipt_items (
   FOREIGN KEY (receipt_id) REFERENCES receipts (id) ON DELETE CASCADE
 )
 ''');
+    await _createAnalyticsTables(db);
   }
+
+Future<void> _createAnalyticsTables(Database db) async {
+          await db.execute('''
+      CREATE TABLE IF NOT EXISTS table_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        table_id INTEGER NOT NULL,
+        table_code TEXT NOT NULL,
+        table_area TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+
+        seated_at TEXT NOT NULL,
+        left_at TEXT,
+
+        status TEXT NOT NULL,
+
+        total_ordered REAL NOT NULL DEFAULT 0,
+        total_paid REAL NOT NULL DEFAULT 0,
+        cash_paid REAL NOT NULL DEFAULT 0,
+        card_paid REAL NOT NULL DEFAULT 0
+      )
+      ''');
+
+          await db.execute('''
+      CREATE TABLE IF NOT EXISTS order_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        session_id INTEGER NOT NULL,
+
+        table_id INTEGER NOT NULL,
+        table_code TEXT NOT NULL,
+        table_area TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+
+        event_type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+
+        product_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        product_category TEXT NOT NULL,
+
+        quantity_delta INTEGER NOT NULL,
+        unit_price REAL NOT NULL,
+        total_price REAL NOT NULL,
+
+        username TEXT,
+        user_role TEXT,
+
+        FOREIGN KEY (session_id) REFERENCES table_sessions (id) ON DELETE CASCADE
+      )
+      ''');
+
+          await db.execute('''
+      CREATE TABLE IF NOT EXISTS payment_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        session_id INTEGER NOT NULL,
+
+        table_id INTEGER NOT NULL,
+        table_code TEXT NOT NULL,
+        table_area TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+
+        created_at TEXT NOT NULL,
+
+        payment_method TEXT NOT NULL,
+        amount REAL NOT NULL,
+
+        username TEXT,
+        user_role TEXT,
+
+        FOREIGN KEY (session_id) REFERENCES table_sessions (id) ON DELETE CASCADE
+      )
+      ''');
+
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_table_sessions_seated_at
+      ON table_sessions(seated_at)
+      ''');
+
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_table_sessions_left_at
+      ON table_sessions(left_at)
+      ''');
+
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_order_events_created_at
+      ON order_events(created_at)
+      ''');
+
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_order_events_product
+      ON order_events(product_id, product_name)
+      ''');
+
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_order_events_category
+      ON order_events(product_category)
+      ''');
+
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_payment_events_created_at
+      ON payment_events(created_at)
+      ''');
+
+          await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_payment_events_method
+      ON payment_events(payment_method)
+      ''');
+        }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE receipts ADD COLUMN table_code TEXT;');
       await db.execute('ALTER TABLE receipts ADD COLUMN table_area TEXT;');
+    }
+
+    if (oldVersion < 3) {
+      await _createAnalyticsTables(db);
     }
   }
 
@@ -135,4 +250,186 @@ CREATE TABLE receipt_items (
     final db = await instance.database;
     return await db.query('receipt_items', where: 'receipt_id = ?', whereArgs: [receiptId]);
   }
+
+  Future<int> createTableSession({
+    required int tableId,
+    required String tableCode,
+    required String tableArea,
+    required String tableName,
+    required DateTime seatedAt,
+  }) async {
+    final db = await instance.database;
+
+    return db.insert('table_sessions', {
+      'table_id': tableId,
+      'table_code': tableCode,
+      'table_area': tableArea,
+      'table_name': tableName,
+      'seated_at': seatedAt.toIso8601String(),
+      'left_at': null,
+      'status': 'open',
+      'total_ordered': 0.0,
+      'total_paid': 0.0,
+      'cash_paid': 0.0,
+      'card_paid': 0.0,
+    });
+  }
+
+  Future<void> closeTableSession({
+    required int sessionId,
+    required DateTime leftAt,
+    required double totalOrdered,
+    required double totalPaid,
+    required double cashPaid,
+    required double cardPaid,
+  }) async {
+    final db = await instance.database;
+
+    await db.update(
+      'table_sessions',
+      {
+        'left_at': leftAt.toIso8601String(),
+        'status': 'closed',
+        'total_ordered': totalOrdered,
+        'total_paid': totalPaid,
+        'cash_paid': cashPaid,
+        'card_paid': cardPaid,
+      },
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
+  Future<void> insertOrderEvent({
+    required int sessionId,
+    required int tableId,
+    required String tableCode,
+    required String tableArea,
+    required String tableName,
+    required String eventType,
+    required DateTime createdAt,
+    required int productId,
+    required String productName,
+    required String productCategory,
+    required int quantityDelta,
+    required double unitPrice,
+    required double totalPrice,
+    String? username,
+    String? userRole,
+  }) async {
+    final db = await instance.database;
+
+    await db.insert('order_events', {
+      'session_id': sessionId,
+      'table_id': tableId,
+      'table_code': tableCode,
+      'table_area': tableArea,
+      'table_name': tableName,
+      'event_type': eventType,
+      'created_at': createdAt.toIso8601String(),
+      'product_id': productId,
+      'product_name': productName,
+      'product_category': productCategory,
+      'quantity_delta': quantityDelta,
+      'unit_price': unitPrice,
+      'total_price': totalPrice,
+      'username': username,
+      'user_role': userRole,
+    });
+
+    await db.rawUpdate(
+      '''
+      UPDATE table_sessions
+      SET total_ordered = total_ordered + ?
+      WHERE id = ?
+      ''',
+      [
+        totalPrice,
+        sessionId,
+      ],
+    );
+  }
+
+  Future<void> insertPaymentEvent({
+    required int sessionId,
+    required int tableId,
+    required String tableCode,
+    required String tableArea,
+    required String tableName,
+    required DateTime createdAt,
+    required String paymentMethod,
+    required double amount,
+    String? username,
+    String? userRole,
+  }) async {
+    final db = await instance.database;
+
+    await db.insert('payment_events', {
+      'session_id': sessionId,
+      'table_id': tableId,
+      'table_code': tableCode,
+      'table_area': tableArea,
+      'table_name': tableName,
+      'created_at': createdAt.toIso8601String(),
+      'payment_method': paymentMethod,
+      'amount': amount,
+      'username': username,
+      'user_role': userRole,
+    });
+
+    final cashIncrement = paymentMethod == 'cash' ? amount : 0.0;
+    final cardIncrement = paymentMethod == 'credit_card' ? amount : 0.0;
+
+    await db.rawUpdate(
+      '''
+      UPDATE table_sessions
+      SET 
+        total_paid = total_paid + ?,
+        cash_paid = cash_paid + ?,
+        card_paid = card_paid + ?
+      WHERE id = ?
+      ''',
+      [
+        amount,
+        cashIncrement,
+        cardIncrement,
+        sessionId,
+      ],
+    );
+  }
+Future<List<Map<String, dynamic>>> getRecentTableSessions({
+  int limit = 20,
+}) async {
+  final db = await database;
+
+  return db.query(
+    'table_sessions',
+    orderBy: 'seated_at DESC',
+    limit: limit,
+  );
+}
+
+Future<List<Map<String, dynamic>>> getRecentOrderEvents({
+  int limit = 50,
+}) async {
+  final db = await database;
+
+  return db.query(
+    'order_events',
+    orderBy: 'created_at DESC',
+    limit: limit,
+  );
+}
+
+Future<List<Map<String, dynamic>>> getRecentPaymentEvents({
+  int limit = 50,
+}) async {
+  final db = await database;
+
+  return db.query(
+    'payment_events',
+    orderBy: 'created_at DESC',
+    limit: limit,
+  );
+}
 }

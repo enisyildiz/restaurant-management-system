@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +30,8 @@ class RestaurantController extends ChangeNotifier {
   User? currentUser;
   NetworkService? _networkService;
   int? startupTime;
+
+  final Map<int, Future<int?>> _sessionCreationFutures = {};
 
   bool login(String username, String password) {
     if (username == 'admin' && password == 'admin123') {
@@ -159,50 +162,275 @@ class RestaurantController extends ChangeNotifier {
     }
   }
 
-  void addProductToTable(int tableId, Product product, {bool fromNetwork = false}) {
-    final table = tables.firstWhere((t) => t.id == tableId);
-    final existingItemIndex = table.orders.indexWhere((item) => item.product.id == product.id);
+  bool get _isAdminDevice => currentUser?.role == UserRole.admin;
 
-    if (existingItemIndex >= 0) {
-      table.orders[existingItemIndex].quantity++;
-    } else {
-      table.orders.add(OrderItem(product: product));
-    }
-    table.status = TableStatus.occupied;
-    
-    if (!fromNetwork && _networkService != null) {
-      _networkService!.sendMessage({
-        'action': 'add_product',
-        'tableId': tableId,
-        'product': product.toJson(),
-      });
-    }
-    notifyListeners();
+String? get _currentUsername => currentUser?.username;
+
+String? get _currentUserRoleName => currentUser?.role.name;
+
+String _paymentMethodToDatabaseValue(PaymentMethod method) {
+  switch (method) {
+    case PaymentMethod.cash:
+      return 'cash';
+    case PaymentMethod.creditCard:
+      return 'credit_card';
+  }
+}
+
+Future<int?> _ensureActiveSessionForTable(TableModel table) async {
+  if (!_isAdminDevice) {
+    return table.activeSessionId;
   }
 
-  void removeProductFromTable(int tableId, Product product, {bool fromNetwork = false}) {
-    final table = tables.firstWhere((t) => t.id == tableId);
-    final existingItemIndex = table.orders.indexWhere((item) => item.product.id == product.id);
+  if (table.activeSessionId != null) {
+    return table.activeSessionId;
+  }
 
-    if (existingItemIndex >= 0) {
-      if (table.orders[existingItemIndex].quantity > 1) {
-        table.orders[existingItemIndex].quantity--;
-      } else {
-        table.orders.removeAt(existingItemIndex);
+  final existingFuture = _sessionCreationFutures[table.id];
+
+  if (existingFuture != null) {
+    return existingFuture;
+  }
+
+  final future = () async {
+    try {
+      final seatedAt = table.seatedAt ?? DateTime.now();
+
+      table.seatedAt = seatedAt;
+
+      final sessionId = await DatabaseService.instance.createTableSession(
+        tableId: table.id,
+        tableCode: table.code,
+        tableArea: table.area,
+        tableName: table.name,
+        seatedAt: seatedAt,
+      );
+
+      table.activeSessionId = sessionId;
+
+      return sessionId;
+    } catch (e) {
+      LoggerService.instance.error('Error creating table session: $e');
+      return null;
+    } finally {
+      _sessionCreationFutures.remove(table.id);
+    }
+  }();
+
+  _sessionCreationFutures[table.id] = future;
+
+  return future;
+}
+
+void _logOrderEventIfAdmin({
+  required TableModel table,
+  required Product product,
+  required String eventType,
+  required int quantityDelta,
+  required double totalPrice,
+}) {
+  if (!_isAdminDevice) return;
+
+  final createdAt = DateTime.now();
+
+  unawaited(() async {
+    try {
+      final sessionId = await _ensureActiveSessionForTable(table);
+
+      if (sessionId == null) return;
+
+      await DatabaseService.instance.insertOrderEvent(
+        sessionId: sessionId,
+        tableId: table.id,
+        tableCode: table.code,
+        tableArea: table.area,
+        tableName: table.name,
+        eventType: eventType,
+        createdAt: createdAt,
+        productId: product.id,
+        productName: product.name,
+        productCategory: product.category,
+        quantityDelta: quantityDelta,
+        unitPrice: product.price,
+        totalPrice: totalPrice,
+        username: _currentUsername,
+        userRole: _currentUserRoleName,
+      );
+    } catch (e) {
+      LoggerService.instance.error('Error inserting order event: $e');
+    }
+  }());
+}
+
+void _logPaymentEventIfAdmin({
+  required TableModel table,
+  required double amount,
+  required PaymentMethod method,
+}) {
+  if (!_isAdminDevice) return;
+
+  final createdAt = DateTime.now();
+
+  unawaited(() async {
+    try {
+      final sessionId = await _ensureActiveSessionForTable(table);
+
+      if (sessionId == null) return;
+
+      await DatabaseService.instance.insertPaymentEvent(
+        sessionId: sessionId,
+        tableId: table.id,
+        tableCode: table.code,
+        tableArea: table.area,
+        tableName: table.name,
+        createdAt: createdAt,
+        paymentMethod: _paymentMethodToDatabaseValue(method),
+        amount: amount,
+        username: _currentUsername,
+        userRole: _currentUserRoleName,
+      );
+    } catch (e) {
+      LoggerService.instance.error('Error inserting payment event: $e');
+    }
+  }());
+}
+
+void _closeSessionIfAdmin(TableModel table) {
+  if (!_isAdminDevice) return;
+
+  final existingSessionId = table.activeSessionId;
+  final leftAt = DateTime.now();
+
+  final tableId = table.id;
+  final tableCode = table.code;
+  final tableArea = table.area;
+  final tableName = table.name;
+
+  final seatedAt = table.seatedAt ?? leftAt;
+
+  final totalOrdered = table.currentTotal;
+  final totalPaid = table.totalPaid;
+  final cashPaid = table.totalCashPaid;
+  final cardPaid = table.totalCardPaid;
+
+  unawaited(() async {
+    try {
+      int? sessionId = existingSessionId;
+
+      if (sessionId == null) {
+        sessionId = await _sessionCreationFutures[tableId];
       }
+
+      sessionId ??= await DatabaseService.instance.createTableSession(
+        tableId: tableId,
+        tableCode: tableCode,
+        tableArea: tableArea,
+        tableName: tableName,
+        seatedAt: seatedAt,
+      );
+
+      await DatabaseService.instance.closeTableSession(
+        sessionId: sessionId,
+        leftAt: leftAt,
+        totalOrdered: totalOrdered,
+        totalPaid: totalPaid,
+        cashPaid: cashPaid,
+        cardPaid: cardPaid,
+      );
+    } catch (e) {
+      LoggerService.instance.error('Error closing table session: $e');
+    }
+  }());
+}
+
+void addProductToTable(
+  int tableId,
+  Product product, {
+  bool fromNetwork = false,
+}) {
+  final table = tables.firstWhere((t) => t.id == tableId);
+  final existingItemIndex = table.orders.indexWhere(
+    (item) => item.product.id == product.id,
+  );
+
+  if (existingItemIndex >= 0) {
+    table.orders[existingItemIndex].quantity++;
+  } else {
+    table.orders.add(OrderItem(product: product));
+  }
+
+  table.status = TableStatus.occupied;
+  table.seatedAt ??= DateTime.now();
+
+  _logOrderEventIfAdmin(
+    table: table,
+    product: product,
+    eventType: 'order_added',
+    quantityDelta: 1,
+    totalPrice: product.price,
+  );
+
+  if (!fromNetwork && _networkService != null) {
+    _networkService!.sendMessage({
+      'action': 'add_product',
+      'tableId': tableId,
+      'product': product.toJson(),
+    });
+  }
+
+  notifyListeners();
+}
+
+void removeProductFromTable(
+  int tableId,
+  Product product, {
+  bool fromNetwork = false,
+}) {
+  final table = tables.firstWhere((t) => t.id == tableId);
+  final existingItemIndex = table.orders.indexWhere(
+    (item) => item.product.id == product.id,
+  );
+
+  var didRemoveItem = false;
+
+  if (existingItemIndex >= 0) {
+    if (table.orders[existingItemIndex].quantity > 1) {
+      table.orders[existingItemIndex].quantity--;
+    } else {
+      table.orders.removeAt(existingItemIndex);
     }
 
-    if (table.orders.isEmpty) table.status = TableStatus.empty;
-    
-    if (!fromNetwork && _networkService != null) {
-      _networkService!.sendMessage({
-        'action': 'remove_product',
-        'tableId': tableId,
-        'product': product.toJson(),
-      });
-    }
-    notifyListeners();
+    didRemoveItem = true;
   }
+
+  if (didRemoveItem) {
+    _logOrderEventIfAdmin(
+      table: table,
+      product: product,
+      eventType: 'item_removed',
+      quantityDelta: -1,
+      totalPrice: -product.price,
+    );
+  }
+
+  if (table.orders.isEmpty) {
+    _closeSessionIfAdmin(table);
+
+    table.status = TableStatus.empty;
+    table.activeSessionId = null;
+    table.seatedAt = null;
+  }
+
+  if (!fromNetwork && _networkService != null) {
+    _networkService!.sendMessage({
+      'action': 'remove_product',
+      'tableId': tableId,
+      'product': product.toJson(),
+    });
+  }
+
+  notifyListeners();
+}
 
   void checkoutTable(int tableId, {bool fromNetwork = false}) {
     final table = tables.firstWhere((t) => t.id == tableId);
@@ -210,13 +438,17 @@ class RestaurantController extends ChangeNotifier {
     // Veritabanı sadece YÖNETİCİ (Admin) bilgisayarında kayıt edilecek
     // İster Admin kendisi kapasın (!fromNetwork), ister Garson kapasın ve ağdan gelsin (fromNetwork).
     // İki durumda da sadece Admin DB'ye yazar. Garson asla yazmaz.
-    if (currentUser?.role == UserRole.admin && table.orders.isNotEmpty) {
-      DatabaseService.instance.saveClosedTable(table);
-    }
+  if (currentUser?.role == UserRole.admin && table.orders.isNotEmpty) {
+    DatabaseService.instance.saveClosedTable(table);
+    _closeSessionIfAdmin(table);
+  }
 
     table.orders.clear();
     table.payments.clear();
     table.status = TableStatus.empty;
+
+    table.activeSessionId = null;
+    table.seatedAt = null;
     
     if (!fromNetwork && _networkService != null) {
       _networkService!.sendMessage({
@@ -365,10 +597,14 @@ class RestaurantController extends ChangeNotifier {
     targetTable.orders.addAll(currentTable.orders);
     targetTable.payments.addAll(currentTable.payments);
     targetTable.status = TableStatus.occupied;
+    targetTable.activeSessionId = currentTable.activeSessionId;
+    targetTable.seatedAt = currentTable.seatedAt;
 
     currentTable.orders.clear();
     currentTable.payments.clear();
     currentTable.status = TableStatus.empty;
+    currentTable.activeSessionId = null;
+    currentTable.seatedAt = null;
     
     if (!fromNetwork && _networkService != null) {
       _networkService!.sendMessage({
@@ -480,6 +716,12 @@ class RestaurantController extends ChangeNotifier {
         method: method,
         paidAt: DateTime.now(),
       ),
+    );
+
+    _logPaymentEventIfAdmin(
+      table: tables[index],
+      amount: safeAmount,
+      method: method,
     );
 
     if (!fromNetwork && _networkService != null) {
