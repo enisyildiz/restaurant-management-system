@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'table_view.dart';
 import 'admin_dashboard_view.dart';
+import 'menu_management_view.dart';
 import 'login_view.dart';
 import '/controllers/restaurant_controller.dart';
 import '../theme/theme.dart';
@@ -66,6 +67,22 @@ class MainMenuView extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (_) => AdminDashboardView(controller: controller),
+                      ),
+                    );
+                  },
+                ),
+
+              if (isAdmin)
+                _MainMenuCard(
+                  icon: Icons.restaurant_menu,
+                  title: 'Menü',
+                  subtitle: 'Ürünleri yönet',
+                  color: AppTheme.pastelOrange,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MenuManagementView(controller: controller),
                       ),
                     );
                   },

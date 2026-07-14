@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -24,7 +27,8 @@ enum PrintTarget {
 class RestaurantController extends ChangeNotifier {
   List<Product> _menu = [];
   bool isLoadingMenu = true;
-  List<String> categories = [];
+  List<String> editableCategories = [];
+  List<String> get categories => ['Tümü', ...editableCategories];
   String selectedCategory = 'Tümü';
 
   User? currentUser;
@@ -86,6 +90,8 @@ class RestaurantController extends ChangeNotifier {
       _networkService!.sendMessage({
         'action': 'full_state',
         'tables': tables.map((t) => t.toJson()).toList(),
+        'menu': _menu.map((p) => p.toJson()).toList(),
+        'categories': editableCategories,
       });
     } else if (action == 'full_state') {
       final remoteTablesData = data['tables'] as List<dynamic>;
@@ -93,8 +99,28 @@ class RestaurantController extends ChangeNotifier {
       
       tables.clear();
       tables.addAll(remoteTables);
+      
+      if (data.containsKey('menu')) {
+        final remoteMenuData = data['menu'] as List<dynamic>;
+        _menu = remoteMenuData.map((e) => Product.fromJson(e)).toList();
+      }
+      if (data.containsKey('categories')) {
+        final remoteCatData = data['categories'] as List<dynamic>;
+        editableCategories = remoteCatData.map((e) => e.toString()).toList();
+      }
+      
       notifyListeners();
       _showSnackbar('Veriler başarıyla eşitlendi.', false);
+    } else if (action == 'sync_menu') {
+      final remoteMenuData = data['menu'] as List<dynamic>;
+      _menu = remoteMenuData.map((e) => Product.fromJson(e)).toList();
+      notifyListeners();
+      _showSnackbar('Menü sunucudan güncellendi.', false);
+    } else if (action == 'sync_categories') {
+      final remoteCatData = data['categories'] as List<dynamic>;
+      editableCategories = remoteCatData.map((e) => e.toString()).toList();
+      notifyListeners();
+      _showSnackbar('Kategoriler sunucudan güncellendi.', false);
     } else if (action == 'add_product') {
       addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
     } else if (action == 'remove_product') {
@@ -122,6 +148,8 @@ class RestaurantController extends ChangeNotifier {
     return _menu.where((p) => p.category == selectedCategory).toList();
   }
 
+  List<Product> get menu => _menu;
+
   void changeCategory(String category) {
     selectedCategory = category;
     notifyListeners();
@@ -130,7 +158,7 @@ class RestaurantController extends ChangeNotifier {
   List<TableModel> tables = [];
 
   RestaurantController() {
-    loadMenu();
+    loadCategories().then((_) => loadMenu());
     loadTables();
   }
 
@@ -147,18 +175,111 @@ class RestaurantController extends ChangeNotifier {
 
   Future<void> loadMenu() async {
     try {
-      final String response = await rootBundle.loadString('assets/menu.json');
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'menu.json');
+      final File configFile = File(configPath);
+      
+      String response;
+      if (await configFile.exists()) {
+        response = await configFile.readAsString();
+      } else {
+        response = await rootBundle.loadString('assets/menu.json');
+        
+        final Directory appDocDirFolder = Directory(p.dirname(configPath));
+        if (!await appDocDirFolder.exists()) {
+          await appDocDirFolder.create(recursive: true);
+        }
+        await configFile.writeAsString(response);
+      }
+      
       final List<dynamic> data = json.decode(response);
       _menu = data.map((jsonItem) => Product.fromJson(jsonItem)).toList();
       
-      categories = ['Tümü', ..._menu.map((e) => e.category).toSet()];
-      
+      if (editableCategories.isEmpty && _menu.isNotEmpty) {
+        editableCategories = _menu.map((e) => e.category).toSet().toList();
+        saveCategories(editableCategories);
+      }
+
       isLoadingMenu = false;
       notifyListeners();
     } catch (e) {
       _showSnackbar("JSON yüklenirken hata oluştu: $e", true);
       isLoadingMenu = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> saveMenu(List<Product> newMenu) async {
+    _menu = newMenu;
+    notifyListeners();
+
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'menu.json');
+      final File configFile = File(configPath);
+      
+      final String jsonStr = json.encode(_menu.map((e) => e.toJson()).toList());
+      await configFile.writeAsString(jsonStr);
+
+      if (_isAdminDevice && _networkService != null) {
+        _networkService!.sendMessage({
+          'action': 'sync_menu',
+          'menu': _menu.map((e) => e.toJson()).toList(),
+        });
+      }
+      
+      _showSnackbar('Menü başarıyla kaydedildi.', false);
+    } catch (e) {
+      _showSnackbar('Menü kaydedilirken hata oluştu: $e', true);
+    }
+  }
+
+  Future<void> loadCategories() async {
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'categories.json');
+      final File configFile = File(configPath);
+      
+      if (await configFile.exists()) {
+        final String response = await configFile.readAsString();
+        final List<dynamic> data = json.decode(response);
+        editableCategories = data.map((e) => e.toString()).toList();
+      } else {
+        editableCategories = [];
+        final Directory appDocDirFolder = Directory(p.dirname(configPath));
+        if (!await appDocDirFolder.exists()) {
+          await appDocDirFolder.create(recursive: true);
+        }
+        await configFile.writeAsString(json.encode(editableCategories));
+      }
+      notifyListeners();
+    } catch (e) {
+      LoggerService.instance.error('Kategoriler yüklenirken hata: $e');
+    }
+  }
+
+  Future<void> saveCategories(List<String> newCategories) async {
+    editableCategories = newCategories;
+    notifyListeners();
+
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'categories.json');
+      final File configFile = File(configPath);
+      
+      final String jsonStr = json.encode(editableCategories);
+      await configFile.writeAsString(jsonStr);
+
+      if (_isAdminDevice && _networkService != null) {
+        _networkService!.sendMessage({
+          'action': 'sync_categories',
+          'categories': editableCategories,
+        });
+      }
+      
+      _showSnackbar('Kategoriler başarıyla kaydedildi.', false);
+    } catch (e) {
+      _showSnackbar('Kategoriler kaydedilirken hata oluştu: $e', true);
     }
   }
 
