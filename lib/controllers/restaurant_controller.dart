@@ -970,6 +970,11 @@ void removeProductFromTable(
       });
     }
 
-    notifyListeners();
+    final newRemaining = remainingForTable(tableId);
+    if (newRemaining <= 0) {
+      checkoutTable(tableId, fromNetwork: fromNetwork);
+    } else {
+      notifyListeners();
+    }
   }
 }

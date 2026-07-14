@@ -37,11 +37,13 @@ class MainMenuView extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(40),
         child: Center(
-          child: Wrap(
-            spacing: 32,
-            runSpacing: 32,
-            alignment: WrapAlignment.center,
-            children: [
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560), // Forces 2x2 layout (260 + 260 + 32 = 552)
+            child: Wrap(
+              spacing: 32,
+              runSpacing: 32,
+              alignment: WrapAlignment.center,
+              children: [
               _MainMenuCard(
                 icon: Icons.table_restaurant,
                 title: 'Masalar',
@@ -89,14 +91,6 @@ class MainMenuView extends StatelessWidget {
                   },
                 ),
 
-              _MainMenuCard(
-                icon: Icons.account_balance_wallet,
-                title: 'Kasa',
-                subtitle: 'Yakında eklenecek',
-                color: AppTheme.pastelYellow,
-                onTap: null,
-              ),
-
               if (isAdmin)
                 _MainMenuCard(
                   icon: Icons.settings,
@@ -112,7 +106,8 @@ class MainMenuView extends StatelessWidget {
                     );
                   },
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

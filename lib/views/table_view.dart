@@ -71,9 +71,6 @@ class TableView extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final table = areaTables[index];
                       final isEmpty = table.status == TableStatus.empty;
-                      final isFullyPaid = !isEmpty && controller.remainingForTable(table.id) <= 0;
-
-                      final isPartiallyPaid = !isEmpty && table.totalPaid > 0 && controller.remainingForTable(table.id) > 0;
 
                       Color bgColor;
                       Color borderColor;
@@ -83,14 +80,6 @@ class TableView extends StatelessWidget {
                         bgColor = AppTheme.pastelGreen;
                         borderColor = AppTheme.pastelGreen;
                         statusText = 'BOŞ';
-                      } else if (isPartiallyPaid) {
-                        bgColor = AppTheme.pastelOrange;
-                        borderColor = AppTheme.pastelOrange;
-                        statusText = 'Kısmi Ödendi\n${controller.remainingForTable(table.id).toStringAsFixed(2)} ₺';
-                      } else if (isFullyPaid) {
-                        bgColor = AppTheme.pastelOrange;
-                        borderColor = AppTheme.pastelOrange;
-                        statusText = 'ÖDENDİ';
                       } else {
                         bgColor = AppTheme.pastelRed;
                         borderColor = AppTheme.pastelRed;
@@ -130,35 +119,35 @@ class TableView extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(10),
+                                padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: bgColor.withOpacity(0.2),
+                                  color: bgColor.withOpacity(0.25),
                                   shape: BoxShape.circle,
                                 ),
                                 child: Text(
                                   table.code,
                                   style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: bgColor,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    color: bgColor.withAlpha(200),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 12),
                               Text(
                                 table.name,
                                 style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
                                   color: AppTheme.textDark,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 6),
                               Text(
                                 statusText,
                                 style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
                                   color: bgColor,
                                 ),
                               ),
