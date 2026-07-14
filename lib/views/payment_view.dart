@@ -218,7 +218,7 @@ class _PaymentViewState extends State<PaymentView> {
                                 children: [
                                   Expanded(child: _buildNumBtn('C', color: AppTheme.pastelRed)), const SizedBox(width: 16),
                                   Expanded(child: _buildNumBtn('0')), const SizedBox(width: 16),
-                                  Expanded(child: _buildNumBtn('⌫', color: AppTheme.pastelYellow)),
+                                  Expanded(child: _buildNumBtn('⌫', color: AppTheme.pastelRed)),
                                 ],
                               ),
                             ),
