@@ -145,10 +145,11 @@ class OrderView extends StatelessWidget {
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.remove_circle_outline, color: AppTheme.pastelRed),
-                                          onPressed: () => controller.removeProductFromTable(tableId, orderItem.product),
-                                        ),
+                                        if (controller.currentUser?.role.name == 'admin')
+                                          IconButton(
+                                            icon: const Icon(Icons.remove_circle_outline, color: AppTheme.pastelRed),
+                                            onPressed: () => controller.removeProductFromTable(tableId, orderItem.product),
+                                          ),
                                         Text('${orderItem.quantity}', style: const TextStyle(fontSize: 18)),
                                         IconButton(
                                           icon: const Icon(Icons.add_circle_outline, color: AppTheme.pastelGreen),

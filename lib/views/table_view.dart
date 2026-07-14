@@ -81,8 +81,8 @@ class TableView extends StatelessWidget {
                         borderColor = AppTheme.pastelGreen;
                         statusText = 'BOŞ';
                       } else {
-                        bgColor = AppTheme.pastelYellow;
-                        borderColor = AppTheme.pastelYellow;
+                        bgColor = AppTheme.pastelOrange;
+                        borderColor = AppTheme.pastelOrange;
                         statusText = '${table.currentTotal.toStringAsFixed(2)} ₺';
                       }
 

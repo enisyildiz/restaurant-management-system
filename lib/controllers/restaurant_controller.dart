@@ -28,8 +28,8 @@ class RestaurantController extends ChangeNotifier {
   List<Product> _menu = [];
   bool isLoadingMenu = true;
   List<String> editableCategories = [];
-  List<String> get categories => ['Tümü', ...editableCategories];
-  String selectedCategory = 'Tümü';
+  List<String> get categories => editableCategories;
+  String selectedCategory = '';
 
   List<String> editableAreas = [];
   List<String> get areas => ['Tümü', ...editableAreas];
@@ -111,6 +111,9 @@ class RestaurantController extends ChangeNotifier {
       if (data.containsKey('categories')) {
         final remoteCatData = data['categories'] as List<dynamic>;
         editableCategories = remoteCatData.map((e) => e.toString()).toList();
+        if (editableCategories.isNotEmpty && selectedCategory.isEmpty) {
+          selectedCategory = editableCategories.first;
+        }
       }
       if (data.containsKey('areas')) {
         final remoteAreaData = data['areas'] as List<dynamic>;
@@ -127,6 +130,9 @@ class RestaurantController extends ChangeNotifier {
     } else if (action == 'sync_categories') {
       final remoteCatData = data['categories'] as List<dynamic>;
       editableCategories = remoteCatData.map((e) => e.toString()).toList();
+      if (!editableCategories.contains(selectedCategory) && editableCategories.isNotEmpty) {
+        selectedCategory = editableCategories.first;
+      }
       notifyListeners();
       _showSnackbar('Kategoriler sunucudan güncellendi.', false);
     } else if (action == 'sync_areas') {
@@ -164,7 +170,7 @@ class RestaurantController extends ChangeNotifier {
   }
 
   List<Product> get filteredMenu {
-    if (selectedCategory == 'Tümü') return _menu;
+    if (selectedCategory.isEmpty || selectedCategory == 'Tümü') return _menu;
     return _menu.where((p) => p.category == selectedCategory).toList();
   }
 
@@ -266,6 +272,12 @@ class RestaurantController extends ChangeNotifier {
         editableCategories = _menu.map((e) => e.category).toSet().toList();
         saveCategories(editableCategories);
       }
+      
+      if (selectedCategory.isEmpty || selectedCategory == 'Tümü') {
+        if (editableCategories.isNotEmpty) {
+          selectedCategory = editableCategories.first;
+        }
+      }
 
       isLoadingMenu = false;
       notifyListeners();
@@ -319,6 +331,13 @@ class RestaurantController extends ChangeNotifier {
         }
         await configFile.writeAsString(json.encode(editableCategories));
       }
+
+      if (selectedCategory.isEmpty || selectedCategory == 'Tümü') {
+        if (editableCategories.isNotEmpty) {
+          selectedCategory = editableCategories.first;
+        }
+      }
+      
       notifyListeners();
     } catch (e) {
       LoggerService.instance.error('Kategoriler yüklenirken hata: $e');
