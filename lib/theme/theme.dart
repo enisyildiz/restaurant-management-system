@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   static const Color primary = Color(0xFF6B9AC4); // Soft Blue
@@ -28,21 +27,23 @@ class AppTheme {
         surface: surface,
         onSurface: textDark,
       ),
-      textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme).copyWith(
-        displayLarge: GoogleFonts.inter(color: textDark, fontWeight: FontWeight.bold),
-        bodyLarge: GoogleFonts.inter(color: textDark),
-        bodyMedium: GoogleFonts.inter(color: textMuted),
+      fontFamily: 'Roboto',
+      textTheme: ThemeData.light().textTheme.copyWith(
+        displayLarge: const TextStyle(color: textDark, fontWeight: FontWeight.bold, fontFamily: 'Roboto'),
+        bodyLarge: const TextStyle(color: textDark, fontFamily: 'Roboto'),
+        bodyMedium: const TextStyle(color: textMuted, fontFamily: 'Roboto'),
       ),
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: surface,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: TextStyle(
           color: textDark,
           fontSize: 20,
           fontWeight: FontWeight.w600,
+          fontFamily: 'Roboto',
         ),
-        iconTheme: const IconThemeData(color: textDark),
+        iconTheme: IconThemeData(color: textDark),
       ),
     );
   }
