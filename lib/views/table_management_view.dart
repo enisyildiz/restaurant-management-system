@@ -1,41 +1,46 @@
 import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
-import '../models/product.dart';
+import '../models/table_model.dart';
 import '../theme/theme.dart';
 
-class MenuManagementView extends StatefulWidget {
+class TableManagementView extends StatefulWidget {
   final RestaurantController controller;
 
-  const MenuManagementView({super.key, required this.controller});
+  const TableManagementView({super.key, required this.controller});
 
   @override
-  State<MenuManagementView> createState() => _MenuManagementViewState();
+  State<TableManagementView> createState() => _TableManagementViewState();
 }
 
-class _MenuManagementViewState extends State<MenuManagementView> {
-  late List<Product> _tempMenu;
-  late List<String> _tempCategories;
+class _TableManagementViewState extends State<TableManagementView> {
+  late List<TableModel> _tempTables;
+  late List<String> _tempAreas;
   
-  final ScrollController _productScrollController = ScrollController();
-  final ScrollController _categoryScrollController = ScrollController();
+  final ScrollController _tableScrollController = ScrollController();
+  final ScrollController _areaScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     // Copy the current lists to work on locally
-    _tempMenu = widget.controller.menu.map((p) => Product(
-      id: p.id,
-      name: p.name,
-      price: p.price,
-      category: p.category,
+    _tempTables = widget.controller.tables.map((t) => TableModel(
+      id: t.id,
+      code: t.code,
+      name: t.name,
+      area: t.area,
+      status: t.status,
+      orders: List.from(t.orders),
+      payments: List.from(t.payments),
+      activeSessionId: t.activeSessionId,
+      seatedAt: t.seatedAt,
     )).toList();
     
-    _tempCategories = List.from(widget.controller.editableCategories);
+    _tempAreas = List.from(widget.controller.editableAreas);
   }
 
   void _saveAll() async {
-    await widget.controller.saveCategories(_tempCategories);
-    await widget.controller.saveMenu(_tempMenu);
+    await widget.controller.saveAreas(_tempAreas);
+    await widget.controller.saveTables(_tempTables);
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -45,20 +50,20 @@ class _MenuManagementViewState extends State<MenuManagementView> {
     }
   }
 
-  void _showProductDialog({Product? product, int? index}) {
-    final isEditing = product != null && index != null;
-    final nameCtrl = TextEditingController(text: product?.name ?? '');
-    final priceCtrl = TextEditingController(text: product?.price.toString() ?? '');
+  void _showTableDialog({TableModel? table, int? index}) {
+    final isEditing = table != null && index != null;
+    final nameCtrl = TextEditingController(text: table?.name ?? '');
+    final codeCtrl = TextEditingController(text: table?.code ?? '');
     
-    // Ensure the default category is one of the existing ones
-    String? selectedCategory = product?.category;
-    if (_tempCategories.isNotEmpty && (selectedCategory == null || !_tempCategories.contains(selectedCategory))) {
-      selectedCategory = _tempCategories.first;
+    // Ensure the default area is one of the existing ones
+    String? selectedArea = table?.area;
+    if (_tempAreas.isNotEmpty && (selectedArea == null || !_tempAreas.contains(selectedArea))) {
+      selectedArea = _tempAreas.first;
     }
 
-    if (_tempCategories.isEmpty) {
+    if (_tempAreas.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen önce kategori ekleyin!'), backgroundColor: AppTheme.pastelOrange),
+        const SnackBar(content: Text('Lütfen önce bölge ekleyin!'), backgroundColor: AppTheme.pastelOrange),
       );
       return;
     }
@@ -69,24 +74,23 @@ class _MenuManagementViewState extends State<MenuManagementView> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text(isEditing ? 'Ürünü Düzenle' : 'Yeni Ürün Ekle'),
+              title: Text(isEditing ? 'Masayı Düzenle' : 'Yeni Masa Ekle'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: 'Ürün Adı'),
+                    controller: codeCtrl,
+                    decoration: const InputDecoration(labelText: 'Masa Kodu (Örn: M-1)'),
                   ),
                   TextField(
-                    controller: priceCtrl,
-                    decoration: const InputDecoration(labelText: 'Fiyat (TL)'),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Masa Adı (Örn: Masa 1)'),
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: selectedCategory,
-                    decoration: const InputDecoration(labelText: 'Kategori'),
-                    items: _tempCategories.map((c) {
+                    value: selectedArea,
+                    decoration: const InputDecoration(labelText: 'Bölge'),
+                    items: _tempAreas.map((c) {
                       return DropdownMenuItem(
                         value: c,
                         child: Text(c),
@@ -94,7 +98,7 @@ class _MenuManagementViewState extends State<MenuManagementView> {
                     }).toList(),
                     onChanged: (val) {
                       setDialogState(() {
-                        selectedCategory = val;
+                        selectedArea = val;
                       });
                     },
                   ),
@@ -109,10 +113,10 @@ class _MenuManagementViewState extends State<MenuManagementView> {
                   style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelMalachite, foregroundColor: Colors.white),
                   onPressed: () {
                     final name = nameCtrl.text.trim();
-                    final price = double.tryParse(priceCtrl.text.trim()) ?? 0.0;
-                    final category = selectedCategory;
+                    final code = codeCtrl.text.trim();
+                    final area = selectedArea;
 
-                    if (name.isEmpty || price <= 0 || category == null) {
+                    if (name.isEmpty || code.isEmpty || area == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Lütfen geçerli değerler girin!'), backgroundColor: AppTheme.pastelRed),
                       );
@@ -121,22 +125,27 @@ class _MenuManagementViewState extends State<MenuManagementView> {
 
                     setState(() {
                       if (isEditing) {
-                        _tempMenu[index] = Product(
-                          id: product.id,
+                        _tempTables[index] = TableModel(
+                          id: table.id,
+                          code: code,
                           name: name,
-                          price: price,
-                          category: category,
+                          area: area,
+                          status: table.status,
+                          orders: table.orders,
+                          payments: table.payments,
+                          activeSessionId: table.activeSessionId,
+                          seatedAt: table.seatedAt,
                         );
                       } else {
                         int nextId = 1;
-                        if (_tempMenu.isNotEmpty) {
-                          nextId = _tempMenu.map((p) => p.id).reduce((a, b) => a > b ? a : b) + 1;
+                        if (_tempTables.isNotEmpty) {
+                          nextId = _tempTables.map((t) => t.id).reduce((a, b) => a > b ? a : b) + 1;
                         }
-                        _tempMenu.add(Product(
+                        _tempTables.add(TableModel(
                           id: nextId,
+                          code: code,
                           name: name,
-                          price: price,
-                          category: category,
+                          area: area,
                         ));
                       }
                     });
@@ -152,12 +161,20 @@ class _MenuManagementViewState extends State<MenuManagementView> {
     );
   }
 
-  void _deleteProduct(int index) {
+  void _deleteTable(int index) {
+    final table = _tempTables[index];
+    if (table.status == TableStatus.occupied || table.orders.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dolu olan veya hesabı açık olan bir masayı silemezsiniz!'), backgroundColor: AppTheme.pastelRed),
+        );
+        return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Silmek istediğinize emin misiniz?'),
-        content: Text('${_tempMenu[index].name} adlı ürünü silmek üzeresiniz.'),
+        content: Text('${table.name} adlı masayı silmek üzeresiniz.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -167,7 +184,7 @@ class _MenuManagementViewState extends State<MenuManagementView> {
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelRed),
             onPressed: () {
               setState(() {
-                _tempMenu.removeAt(index);
+                _tempTables.removeAt(index);
               });
               Navigator.pop(context);
             },
@@ -178,21 +195,21 @@ class _MenuManagementViewState extends State<MenuManagementView> {
     );
   }
 
-  void _showCategoryDialog({String? category, int? index}) {
-    final isEditing = category != null && index != null;
-    final nameCtrl = TextEditingController(text: category ?? '');
+  void _showAreaDialog({String? area, int? index}) {
+    final isEditing = area != null && index != null;
+    final nameCtrl = TextEditingController(text: area ?? '');
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(isEditing ? 'Kategori Düzenle' : 'Yeni Kategori Ekle'),
+          title: Text(isEditing ? 'Bölgeyi Düzenle' : 'Yeni Bölge Ekle'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Kategori Adı'),
+                decoration: const InputDecoration(labelText: 'Bölge Adı (Örn: Bahçe)'),
               ),
             ],
           ),
@@ -208,36 +225,41 @@ class _MenuManagementViewState extends State<MenuManagementView> {
 
                 if (name.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen geçerli kategori adı girin!'), backgroundColor: AppTheme.pastelRed),
+                    const SnackBar(content: Text('Lütfen geçerli bölge adı girin!'), backgroundColor: AppTheme.pastelRed),
                   );
                   return;
                 }
                 
-                if (_tempCategories.contains(name) && (!isEditing || _tempCategories[index] != name)) {
+                if (_tempAreas.contains(name) && (!isEditing || _tempAreas[index] != name)) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Bu kategori zaten var!'), backgroundColor: AppTheme.pastelRed),
+                    const SnackBar(content: Text('Bu bölge zaten var!'), backgroundColor: AppTheme.pastelRed),
                   );
                   return;
                 }
 
                 setState(() {
                   if (isEditing) {
-                    final oldName = _tempCategories[index];
-                    _tempCategories[index] = name;
+                    final oldName = _tempAreas[index];
+                    _tempAreas[index] = name;
                     
-                    // Update products that use this category
-                    for (int i = 0; i < _tempMenu.length; i++) {
-                        if (_tempMenu[i].category == oldName) {
-                            _tempMenu[i] = Product(
-                                id: _tempMenu[i].id, 
-                                name: _tempMenu[i].name, 
-                                price: _tempMenu[i].price, 
-                                category: name
+                    // Update tables that use this area
+                    for (int i = 0; i < _tempTables.length; i++) {
+                        if (_tempTables[i].area == oldName) {
+                            _tempTables[i] = TableModel(
+                                id: _tempTables[i].id, 
+                                code: _tempTables[i].code,
+                                name: _tempTables[i].name, 
+                                area: name,
+                                status: _tempTables[i].status,
+                                orders: _tempTables[i].orders,
+                                payments: _tempTables[i].payments,
+                                activeSessionId: _tempTables[i].activeSessionId,
+                                seatedAt: _tempTables[i].seatedAt,
                             );
                         }
                     }
                   } else {
-                    _tempCategories.add(name);
+                    _tempAreas.add(name);
                   }
                 });
                 Navigator.pop(context);
@@ -250,13 +272,13 @@ class _MenuManagementViewState extends State<MenuManagementView> {
     );
   }
 
-  void _deleteCategory(int index) {
-    final catName = _tempCategories[index];
-    final hasProducts = _tempMenu.any((p) => p.category == catName);
+  void _deleteArea(int index) {
+    final areaName = _tempAreas[index];
+    final hasTables = _tempTables.any((t) => t.area == areaName);
 
-    if (hasProducts) {
+    if (hasTables) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bu kategoriye ait ürünler var! Önce ürünleri silin veya kategorisini değiştirin.'), backgroundColor: AppTheme.pastelRed),
+          const SnackBar(content: Text('Bu bölgede masalar var! Önce masaları silin veya bölgesini değiştirin.'), backgroundColor: AppTheme.pastelRed),
         );
         return;
     }
@@ -265,7 +287,7 @@ class _MenuManagementViewState extends State<MenuManagementView> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Silmek istediğinize emin misiniz?'),
-        content: Text('$catName adlı kategoriyi silmek üzeresiniz.'),
+        content: Text('$areaName adlı bölgeyi silmek üzeresiniz.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -275,7 +297,7 @@ class _MenuManagementViewState extends State<MenuManagementView> {
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelRed),
             onPressed: () {
               setState(() {
-                _tempCategories.removeAt(index);
+                _tempAreas.removeAt(index);
               });
               Navigator.pop(context);
             },
@@ -293,7 +315,7 @@ class _MenuManagementViewState extends State<MenuManagementView> {
       child: Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
-          title: const Text('Menü Yönetimi'),
+          title: const Text('Masa ve Bölge Yönetimi'),
           backgroundColor: AppTheme.surfaceLight,
           iconTheme: const IconThemeData(color: AppTheme.textDark),
           titleTextStyle: const TextStyle(color: AppTheme.textDark, fontSize: 20, fontWeight: FontWeight.bold),
@@ -302,8 +324,8 @@ class _MenuManagementViewState extends State<MenuManagementView> {
             unselectedLabelColor: AppTheme.textMuted,
             indicatorColor: AppTheme.primary,
             tabs: [
-              Tab(text: 'Ürün Yönetimi'),
-              Tab(text: 'Kategori Yönetimi'),
+              Tab(text: 'Masa Yönetimi'),
+              Tab(text: 'Bölge Yönetimi'),
             ],
           ),
           actions: [
@@ -320,15 +342,15 @@ class _MenuManagementViewState extends State<MenuManagementView> {
         ),
         body: TabBarView(
           children: [
-            _buildProductsTab(),
-            _buildCategoriesTab(),
+            _buildTablesTab(),
+            _buildAreasTab(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProductsTab() {
+  Widget _buildTablesTab() {
     return Column(
       children: [
         Padding(
@@ -337,11 +359,11 @@ class _MenuManagementViewState extends State<MenuManagementView> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               FloatingActionButton.extended(
-                heroTag: 'addProduct',
-                onPressed: () => _showProductDialog(),
+                heroTag: 'addTable',
+                onPressed: () => _showTableDialog(),
                 backgroundColor: AppTheme.pastelMalachite,
                 icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text('Yeni Ürün', style: TextStyle(color: Colors.white)),
+                label: const Text('Yeni Masa', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -355,43 +377,42 @@ class _MenuManagementViewState extends State<MenuManagementView> {
               border: Border.all(color: AppTheme.textMuted.withOpacity(0.1)),
             ),
             child: Scrollbar(
-              controller: _productScrollController,
+              controller: _tableScrollController,
               thumbVisibility: true,
               child: SingleChildScrollView(
-                controller: _productScrollController,
+                controller: _tableScrollController,
                 child: SizedBox(
                   width: double.infinity,
                   child: DataTable(
                     headingRowColor: MaterialStateProperty.all(AppTheme.primary.withOpacity(0.1)),
                     columns: const [
-                      DataColumn(label: Text('ID', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('Ürün Adı', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('Kategori', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('Fiyat (TL)', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Masa Kodu', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Masa Adı', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Bölge', style: TextStyle(fontWeight: FontWeight.bold))),
                       DataColumn(label: Text('İşlemler', style: TextStyle(fontWeight: FontWeight.bold))),
                     ],
-                    rows: _tempMenu.asMap().entries.map((entry) {
+                    rows: _tempTables.asMap().entries.map((entry) {
                       final index = entry.key;
-                      final product = entry.value;
+                      final table = entry.value;
+                      final isOccupied = table.status == TableStatus.occupied || table.orders.isNotEmpty;
                       return DataRow(
                         cells: [
-                          DataCell(Text(product.id.toString())),
-                          DataCell(Text(product.name)),
-                          DataCell(Text(product.category)),
-                          DataCell(Text('${product.price.toStringAsFixed(2)} ₺')),
+                          DataCell(Text(table.code)),
+                          DataCell(Text(table.name)),
+                          DataCell(Text(table.area)),
                           DataCell(
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.edit, color: AppTheme.primary),
-                                  onPressed: () => _showProductDialog(product: product, index: index),
+                                  onPressed: () => _showTableDialog(table: table, index: index),
                                   tooltip: 'Düzenle',
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete, color: AppTheme.pastelRed),
-                                  onPressed: () => _deleteProduct(index),
-                                  tooltip: 'Sil',
+                                  icon: Icon(Icons.delete, color: isOccupied ? AppTheme.textMuted : AppTheme.pastelRed),
+                                  onPressed: isOccupied ? null : () => _deleteTable(index),
+                                  tooltip: isOccupied ? 'Dolu masa silinemez. Önce masayı kapatın.' : 'Sil',
                                 ),
                               ],
                             ),
@@ -409,7 +430,7 @@ class _MenuManagementViewState extends State<MenuManagementView> {
     );
   }
 
-  Widget _buildCategoriesTab() {
+  Widget _buildAreasTab() {
     return Column(
       children: [
         Padding(
@@ -418,11 +439,11 @@ class _MenuManagementViewState extends State<MenuManagementView> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               FloatingActionButton.extended(
-                heroTag: 'addCategory',
-                onPressed: () => _showCategoryDialog(),
+                heroTag: 'addArea',
+                onPressed: () => _showAreaDialog(),
                 backgroundColor: AppTheme.pastelMalachite,
                 icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text('Yeni Kategori', style: TextStyle(color: Colors.white)),
+                label: const Text('Yeni Bölge', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -436,26 +457,26 @@ class _MenuManagementViewState extends State<MenuManagementView> {
               border: Border.all(color: AppTheme.textMuted.withOpacity(0.1)),
             ),
             child: Scrollbar(
-              controller: _categoryScrollController,
+              controller: _areaScrollController,
               thumbVisibility: true,
               child: SingleChildScrollView(
-                controller: _categoryScrollController,
+                controller: _areaScrollController,
                 child: SizedBox(
                   width: double.infinity,
                   child: DataTable(
                     headingRowColor: MaterialStateProperty.all(AppTheme.primary.withOpacity(0.1)),
                     columns: const [
-                      DataColumn(label: Text('Kategori Adı', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('Ürün Sayısı', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Bölge Adı', style: TextStyle(fontWeight: FontWeight.bold))),
+                      DataColumn(label: Text('Masa Sayısı', style: TextStyle(fontWeight: FontWeight.bold))),
                       DataColumn(label: Text('İşlemler', style: TextStyle(fontWeight: FontWeight.bold))),
                     ],
-                    rows: _tempCategories.asMap().entries.map((entry) {
+                    rows: _tempAreas.asMap().entries.map((entry) {
                       final index = entry.key;
-                      final category = entry.value;
-                      final count = _tempMenu.where((p) => p.category == category).length;
+                      final area = entry.value;
+                      final count = _tempTables.where((t) => t.area == area).length;
                       return DataRow(
                         cells: [
-                          DataCell(Text(category)),
+                          DataCell(Text(area)),
                           DataCell(Text(count.toString())),
                           DataCell(
                             Row(
@@ -463,12 +484,12 @@ class _MenuManagementViewState extends State<MenuManagementView> {
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.edit, color: AppTheme.primary),
-                                  onPressed: () => _showCategoryDialog(category: category, index: index),
+                                  onPressed: () => _showAreaDialog(area: area, index: index),
                                   tooltip: 'Düzenle',
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.delete, color: AppTheme.pastelRed),
-                                  onPressed: () => _deleteCategory(index),
+                                  onPressed: () => _deleteArea(index),
                                   tooltip: 'Sil',
                                 ),
                               ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'table_view.dart';
 import 'admin_dashboard_view.dart';
 import 'menu_management_view.dart';
+import 'table_management_view.dart';
 import 'login_view.dart';
 import '/controllers/restaurant_controller.dart';
 import '../theme/theme.dart';
@@ -96,13 +97,21 @@ class MainMenuView extends StatelessWidget {
                 onTap: null,
               ),
 
-              _MainMenuCard(
-                icon: Icons.settings,
-                title: 'Ayarlar',
-                subtitle: 'Yakında eklenecek',
-                color: AppTheme.textMuted,
-                onTap: null,
-              ),
+              if (isAdmin)
+                _MainMenuCard(
+                  icon: Icons.settings,
+                  title: 'Ayarlar',
+                  subtitle: 'Restoranını Yönet',
+                  color: AppTheme.primary,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TableManagementView(controller: controller),
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
         ),

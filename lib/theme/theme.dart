@@ -9,6 +9,7 @@ class AppTheme {
   static const Color surfaceLight = Color(0xFFF0F4F8);
 
   static const Color pastelGreen = Color(0xFFB5EAD7);
+  static const Color pastelMalachite = Color(0xFF0BDA51);
   static const Color pastelRed = Color(0xFFFF9AA2);
   static const Color pastelBlue = Color(0xFFC7CEEA);
   static const Color pastelYellow = Color(0xFFFDFD96);

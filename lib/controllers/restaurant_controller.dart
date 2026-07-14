@@ -31,6 +31,10 @@ class RestaurantController extends ChangeNotifier {
   List<String> get categories => ['Tümü', ...editableCategories];
   String selectedCategory = 'Tümü';
 
+  List<String> editableAreas = [];
+  List<String> get areas => ['Tümü', ...editableAreas];
+  String selectedArea = 'Tümü';
+
   User? currentUser;
   NetworkService? _networkService;
   int? startupTime;
@@ -93,12 +97,12 @@ class RestaurantController extends ChangeNotifier {
         'menu': _menu.map((p) => p.toJson()).toList(),
         'categories': editableCategories,
       });
-    } else if (action == 'full_state') {
-      final remoteTablesData = data['tables'] as List<dynamic>;
-      final remoteTables = remoteTablesData.map((e) => TableModel.fromJson(e)).toList();
-      
-      tables.clear();
-      tables.addAll(remoteTables);
+      if (data.containsKey('tables')) {
+        final remoteTablesData = data['tables'] as List<dynamic>;
+        final remoteTables = remoteTablesData.map((e) => TableModel.fromJson(e)).toList();
+        tables.clear();
+        tables.addAll(remoteTables);
+      }
       
       if (data.containsKey('menu')) {
         final remoteMenuData = data['menu'] as List<dynamic>;
@@ -107,6 +111,10 @@ class RestaurantController extends ChangeNotifier {
       if (data.containsKey('categories')) {
         final remoteCatData = data['categories'] as List<dynamic>;
         editableCategories = remoteCatData.map((e) => e.toString()).toList();
+      }
+      if (data.containsKey('areas')) {
+        final remoteAreaData = data['areas'] as List<dynamic>;
+        editableAreas = remoteAreaData.map((e) => e.toString()).toList();
       }
       
       notifyListeners();
@@ -121,6 +129,18 @@ class RestaurantController extends ChangeNotifier {
       editableCategories = remoteCatData.map((e) => e.toString()).toList();
       notifyListeners();
       _showSnackbar('Kategoriler sunucudan güncellendi.', false);
+    } else if (action == 'sync_areas') {
+      final remoteAreaData = data['areas'] as List<dynamic>;
+      editableAreas = remoteAreaData.map((e) => e.toString()).toList();
+      notifyListeners();
+      _showSnackbar('Bölgeler sunucudan güncellendi.', false);
+    } else if (action == 'sync_tables') {
+      final remoteTablesData = data['tables'] as List<dynamic>;
+      final remoteTables = remoteTablesData.map((e) => TableModel.fromJson(e)).toList();
+      tables.clear();
+      tables.addAll(remoteTables);
+      notifyListeners();
+      _showSnackbar('Masalar sunucudan güncellendi.', false);
     } else if (action == 'add_product') {
       addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
     } else if (action == 'remove_product') {
@@ -159,17 +179,64 @@ class RestaurantController extends ChangeNotifier {
 
   RestaurantController() {
     loadCategories().then((_) => loadMenu());
-    loadTables();
+    loadAreas().then((_) => loadTables());
   }
 
   Future<void> loadTables() async {
     try {
-      final String response = await rootBundle.loadString('assets/tables.json');
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'tables.json');
+      final File configFile = File(configPath);
+      
+      String response;
+      if (await configFile.exists()) {
+        response = await configFile.readAsString();
+      } else {
+        response = await rootBundle.loadString('assets/tables.json');
+        
+        final Directory appDocDirFolder = Directory(p.dirname(configPath));
+        if (!await appDocDirFolder.exists()) {
+          await appDocDirFolder.create(recursive: true);
+        }
+        await configFile.writeAsString(response);
+      }
+
       final List<dynamic> data = json.decode(response);
       tables = data.map((jsonItem) => TableModel.fromJson(jsonItem)).toList();
+      
+      if (editableAreas.isEmpty && tables.isNotEmpty) {
+        editableAreas = tables.map((e) => e.area).toSet().toList();
+        saveAreas(editableAreas);
+      }
+
       notifyListeners();
     } catch (e) {
       LoggerService.instance.error('Error loading tables.json: $e');
+    }
+  }
+
+  Future<void> saveTables(List<TableModel> newTables) async {
+    tables = newTables;
+    notifyListeners();
+
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'tables.json');
+      final File configFile = File(configPath);
+      
+      final String jsonStr = json.encode(tables.map((e) => e.toJson()).toList());
+      await configFile.writeAsString(jsonStr);
+
+      if (_isAdminDevice && _networkService != null) {
+        _networkService!.sendMessage({
+          'action': 'sync_tables',
+          'tables': tables.map((e) => e.toJson()).toList(),
+        });
+      }
+      
+      _showSnackbar('Masalar başarıyla kaydedildi.', false);
+    } catch (e) {
+      _showSnackbar('Masalar kaydedilirken hata oluştu: $e', true);
     }
   }
 
@@ -280,6 +347,55 @@ class RestaurantController extends ChangeNotifier {
       _showSnackbar('Kategoriler başarıyla kaydedildi.', false);
     } catch (e) {
       _showSnackbar('Kategoriler kaydedilirken hata oluştu: $e', true);
+    }
+  }
+
+  Future<void> loadAreas() async {
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'areas.json');
+      final File configFile = File(configPath);
+      
+      if (await configFile.exists()) {
+        final String response = await configFile.readAsString();
+        final List<dynamic> data = json.decode(response);
+        editableAreas = data.map((e) => e.toString()).toList();
+      } else {
+        editableAreas = [];
+        final Directory appDocDirFolder = Directory(p.dirname(configPath));
+        if (!await appDocDirFolder.exists()) {
+          await appDocDirFolder.create(recursive: true);
+        }
+        await configFile.writeAsString(json.encode(editableAreas));
+      }
+      notifyListeners();
+    } catch (e) {
+      LoggerService.instance.error('Bölgeler yüklenirken hata: $e');
+    }
+  }
+
+  Future<void> saveAreas(List<String> newAreas) async {
+    editableAreas = newAreas;
+    notifyListeners();
+
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'areas.json');
+      final File configFile = File(configPath);
+      
+      final String jsonStr = json.encode(editableAreas);
+      await configFile.writeAsString(jsonStr);
+
+      if (_isAdminDevice && _networkService != null) {
+        _networkService!.sendMessage({
+          'action': 'sync_areas',
+          'areas': editableAreas,
+        });
+      }
+      
+      _showSnackbar('Bölgeler başarıyla kaydedildi.', false);
+    } catch (e) {
+      _showSnackbar('Bölgeler kaydedilirken hata oluştu: $e', true);
     }
   }
 
