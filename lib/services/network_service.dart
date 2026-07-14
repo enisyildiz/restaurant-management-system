@@ -85,7 +85,7 @@ class NetworkService {
     final pipeline = const Pipeline().addHandler(router.call);
 
     try {
-      _server = await io.serve(pipeline, InternetAddress.anyIPv4, 8080);
+      _server = await io.serve(pipeline, InternetAddress.anyIPv4, 8182);
       LoggerService.instance.info('Host Server running on port ${_server!.port}');
     } catch (e) {
       LoggerService.instance.error('Error starting server: $e');
@@ -103,7 +103,7 @@ class NetworkService {
 
   void _tryConnect() {
     try {
-      final wsUrl = Uri.parse('ws://$serverIp:8080/ws');
+      final wsUrl = Uri.parse('ws://$serverIp:8182/ws');
       _clientChannel = WebSocketChannel.connect(wsUrl);
       
       _isConnected = true;
