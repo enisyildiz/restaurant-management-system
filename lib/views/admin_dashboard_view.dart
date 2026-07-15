@@ -761,7 +761,7 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('${item['quantity']}x ${item['product_name']}'),
+                            Text('${(item['quantity'] as num).toDouble() == (item['quantity'] as num).truncateToDouble() ? (item['quantity'] as num).toInt() : (item['quantity'] as num).toDouble()}x ${item['product_name']}'),
                             Text('${((item['price'] as num) * (item['quantity'] as num)).toStringAsFixed(2)} ₺'),
                           ],
                         ),
@@ -1317,8 +1317,7 @@ void _showSessionDetailsDialog({
                         )
                       else
                         ...orders.map((order) {
-                          final quantity =
-                              _toDouble(order['total_quantity']).toInt();
+                          final quantity = _toDouble(order['total_quantity']);
                           final price = _toDouble(order['total_price']);
 
                           return ListTile(
@@ -1334,7 +1333,7 @@ void _showSessionDetailsDialog({
                               order['product_category'].toString(),
                             ),
                             trailing: Text(
-                              '$quantity adet / ${_formatMoney(price)}',
+                              '${quantity == quantity.truncateToDouble() ? quantity.toInt() : quantity} adet / ${_formatMoney(price)}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1466,13 +1465,13 @@ class _OrderEventsList extends StatelessWidget {
       itemBuilder: (context, index) {
         final item = data[index];
 
-        final quantity = ((item['quantity_delta'] as num?) ?? 0).toInt();
+        final quantity = ((item['quantity_delta'] as num?) ?? 0).toDouble();
         final price = ((item['total_price'] as num?) ?? 0).toDouble();
 
         return ListTile(
           dense: true,
           title: Text(
-            '${item['product_name']} x $quantity',
+            '${item['product_name']} x ${quantity == quantity.truncateToDouble() ? quantity.toInt() : quantity}',
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: Text(
@@ -1579,7 +1578,7 @@ class _TopProductsList extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${quantity.toStringAsFixed(0)} adet',
+                  '${quantity == quantity.truncateToDouble() ? quantity.toInt() : quantity} adet',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -1606,7 +1605,7 @@ class _TopProductsList extends StatelessWidget {
           ),
           subtitle: Text(
             '${item['product_category']} | '
-            '${quantity.toStringAsFixed(0)} adet | '
+            '${quantity == quantity.truncateToDouble() ? quantity.toInt() : quantity} adet | '
             'Adet payı: %${quantityPercentage.toStringAsFixed(1)}',
           ),
           trailing: Column(
@@ -1678,7 +1677,7 @@ class _CategoryRevenueList extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: Text(
-            '${quantity.toStringAsFixed(0)} ürün | '
+            '${quantity == quantity.truncateToDouble() ? quantity.toInt() : quantity} ürün | '
             'Adet payı: %${quantityPercentage.toStringAsFixed(1)}',
           ),
           trailing: Column(

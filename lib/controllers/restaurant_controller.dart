@@ -151,6 +151,8 @@ class RestaurantController extends ChangeNotifier {
       addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
     } else if (action == 'remove_product') {
       removeProductFromTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
+    } else if (action == 'set_product_quantity') {
+      setProductQuantity(data['tableId'], Product.fromJson(data['product']), (data['quantity'] as num).toDouble(), fromNetwork: true);
     } else if (action == 'checkout_table') {
         checkoutTable(data['tableId'], fromNetwork: true);
     } else if (action == 'move_table') {
@@ -482,7 +484,7 @@ void _logOrderEventIfAdmin({
   required TableModel table,
   required Product product,
   required String eventType,
-  required int quantityDelta,
+  required double quantityDelta,
   required double totalPrice,
 }) {
   if (!_isAdminDevice) return;
@@ -610,9 +612,9 @@ void addProductToTable(
   );
 
   if (existingItemIndex >= 0) {
-    table.orders[existingItemIndex].quantity++;
+    table.orders[existingItemIndex].quantity += 1.0;
   } else {
-    table.orders.add(OrderItem(product: product));
+    table.orders.add(OrderItem(product: product, orderTime: DateTime.now()));
   }
 
   table.status = TableStatus.occupied;
@@ -622,7 +624,7 @@ void addProductToTable(
     table: table,
     product: product,
     eventType: 'order_added',
-    quantityDelta: 1,
+    quantityDelta: 1.0,
     totalPrice: product.price,
   );
 
@@ -631,6 +633,64 @@ void addProductToTable(
       'action': 'add_product',
       'tableId': tableId,
       'product': product.toJson(),
+    });
+  }
+
+  notifyListeners();
+}
+
+void setProductQuantity(
+  int tableId,
+  Product product,
+  double newQuantity, {
+  bool fromNetwork = false,
+}) {
+  if (newQuantity <= 0) {
+    if (currentUser?.role.name == 'admin') {
+      removeProductFromTable(tableId, product, fromNetwork: fromNetwork);
+      return;
+    } else {
+      newQuantity = 1.0;
+    }
+  }
+
+  final table = tables.firstWhere((t) => t.id == tableId);
+  final existingItemIndex = table.orders.indexWhere(
+    (item) => item.product.id == product.id,
+  );
+
+  if (existingItemIndex >= 0) {
+    final oldQuantity = table.orders[existingItemIndex].quantity;
+    final delta = newQuantity - oldQuantity;
+    table.orders[existingItemIndex].quantity = newQuantity;
+
+    _logOrderEventIfAdmin(
+      table: table,
+      product: product,
+      eventType: 'quantity_updated',
+      quantityDelta: delta,
+      totalPrice: product.price * delta,
+    );
+  } else {
+    table.orders.add(OrderItem(product: product, quantity: newQuantity, orderTime: DateTime.now()));
+    table.status = TableStatus.occupied;
+    table.seatedAt ??= DateTime.now();
+
+    _logOrderEventIfAdmin(
+      table: table,
+      product: product,
+      eventType: 'order_added',
+      quantityDelta: newQuantity,
+      totalPrice: product.price * newQuantity,
+    );
+  }
+
+  if (!fromNetwork && _networkService != null) {
+    _networkService!.sendMessage({
+      'action': 'set_product_quantity',
+      'tableId': tableId,
+      'product': product.toJson(),
+      'quantity': newQuantity,
     });
   }
 
@@ -647,25 +707,16 @@ void removeProductFromTable(
     (item) => item.product.id == product.id,
   );
 
-  var didRemoveItem = false;
-
   if (existingItemIndex >= 0) {
-    if (table.orders[existingItemIndex].quantity > 1) {
-      table.orders[existingItemIndex].quantity--;
-    } else {
-      table.orders.removeAt(existingItemIndex);
-    }
+    final oldQuantity = table.orders[existingItemIndex].quantity;
+    table.orders.removeAt(existingItemIndex);
 
-    didRemoveItem = true;
-  }
-
-  if (didRemoveItem) {
     _logOrderEventIfAdmin(
       table: table,
       product: product,
       eventType: 'item_removed',
-      quantityDelta: -1,
-      totalPrice: -product.price,
+      quantityDelta: -oldQuantity,
+      totalPrice: -(product.price * oldQuantity),
     );
   }
 
@@ -817,7 +868,7 @@ void removeProductFromTable(
             mainAxisAlignment: pw.MainAxisAlignment.start,
             children: [
               pw.Text(
-                '${item.quantity}x  ${item.product.name}',
+                '${item.quantity == item.quantity.truncateToDouble() ? item.quantity.toInt() : item.quantity}x  ${item.product.name}',
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14),
               ),
             ],
@@ -831,7 +882,7 @@ void removeProductFromTable(
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('${item.quantity}x ${item.product.name}'),
+              pw.Text('${item.quantity == item.quantity.truncateToDouble() ? item.quantity.toInt() : item.quantity}x ${item.product.name}'),
               pw.Text('${item.totalPrice.toStringAsFixed(2)} TL'),
             ],
           ),

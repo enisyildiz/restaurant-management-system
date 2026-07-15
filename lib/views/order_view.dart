@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
 import '../models/table_model.dart';
 import '../theme/theme.dart';
+import '../models/product.dart';
 import 'payment_view.dart';
 
 class OrderView extends StatelessWidget {
@@ -139,23 +140,55 @@ class OrderView extends StatelessWidget {
                                 itemCount: table.orders.length,
                                 itemBuilder: (context, index) {
                                   final orderItem = table.orders[index];
-                                  return ListTile(
-                                    title: Text(orderItem.product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                    subtitle: Text('${orderItem.product.price} ₺ x ${orderItem.quantity}'),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (controller.currentUser?.role.name == 'admin')
-                                          IconButton(
-                                            icon: const Icon(Icons.remove_circle_outline, color: AppTheme.pastelRed),
-                                            onPressed: () => controller.removeProductFromTable(tableId, orderItem.product),
+                                  return InkWell(
+                                    onTap: () => _showNumpadDialog(context, controller, tableId, orderItem.product, orderItem.quantity),
+                                    child: ListTile(
+                                      title: Text(orderItem.product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      subtitle: Text('${orderItem.product.price} ₺ x ${_formatQuantity(orderItem.quantity)}'),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (controller.currentUser?.role.name == 'admin')
+                                            IconButton(
+                                              icon: const Icon(Icons.remove_circle_outline, color: AppTheme.pastelRed),
+                                              onPressed: () {
+                                                showDialog(
+                                                  context: context,
+                                                  builder: (BuildContext context) {
+                                                    return AlertDialog(
+                                                      title: const Text('Ürünü Sil'),
+                                                      content: Text('${orderItem.product.name} siparişten tamamen silinecek. Emin misiniz?'),
+                                                      actions: [
+                                                        TextButton(
+                                                          onPressed: () => Navigator.of(context).pop(),
+                                                          child: const Text('İptal', style: TextStyle(color: AppTheme.textMuted)),
+                                                        ),
+                                                        TextButton(
+                                                          onPressed: () {
+                                                            controller.removeProductFromTable(tableId, orderItem.product);
+                                                            Navigator.of(context).pop();
+                                                          },
+                                                          child: const Text('Evet, Sil', style: TextStyle(color: AppTheme.pastelRed, fontWeight: FontWeight.bold)),
+                                                        ),
+                                                      ],
+                                                    );
+                                                  },
+                                                );
+                                              },
+                                            ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.pastelGreen.withOpacity(0.3),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              _formatQuantity(orderItem.quantity),
+                                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                                            ),
                                           ),
-                                        Text('${orderItem.quantity}', style: const TextStyle(fontSize: 18)),
-                                        IconButton(
-                                          icon: const Icon(Icons.add_circle_outline, color: AppTheme.pastelGreen),
-                                          onPressed: () => controller.addProductToTable(tableId, orderItem.product),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   );
                                 },
@@ -394,6 +427,129 @@ class OrderView extends StatelessWidget {
               },
             ),
           ),
+        );
+      },
+    );
+  }
+
+  String _formatQuantity(double q) {
+    return q == q.truncateToDouble() ? q.toInt().toString() : q.toString();
+  }
+
+  void _showNumpadDialog(BuildContext context, RestaurantController controller, int tableId, Product product, double currentQuantity) {
+    String inputValue = _formatQuantity(currentQuantity);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            void onKeyPress(String key) {
+              setState(() {
+                if (key == 'C') {
+                  inputValue = '';
+                } else if (key == 'DEL') {
+                  if (inputValue.isNotEmpty) {
+                    inputValue = inputValue.substring(0, inputValue.length - 1);
+                  }
+                } else if (key == '.') {
+                  if (!inputValue.contains('.')) {
+                    inputValue += inputValue.isEmpty ? '0.' : '.';
+                  }
+                } else {
+                  inputValue += key;
+                }
+              });
+            }
+
+            Widget buildBtn(String text, {Color? color}) {
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: color ?? AppTheme.surface,
+                      foregroundColor: AppTheme.textDark,
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 1,
+                    ),
+                    onPressed: () => onKeyPress(text),
+                    child: Text(text, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              );
+            }
+
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              backgroundColor: AppTheme.surfaceLight,
+              child: Container(
+                width: 320,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(product.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.textMuted.withOpacity(0.2)),
+                      ),
+                      child: Text(
+                        inputValue.isEmpty ? '0' : inputValue,
+                        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(children: [buildBtn('7'), buildBtn('8'), buildBtn('9')]),
+                    Row(children: [buildBtn('4'), buildBtn('5'), buildBtn('6')]),
+                    Row(children: [buildBtn('1'), buildBtn('2'), buildBtn('3')]),
+                    Row(children: [buildBtn('.'), buildBtn('0'), buildBtn('DEL', color: AppTheme.pastelRed)]),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.textMuted.withOpacity(0.2),
+                              foregroundColor: AppTheme.textDark,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('İptal', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.pastelGreen,
+                              foregroundColor: AppTheme.textDark,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () {
+                              final newQ = double.tryParse(inputValue) ?? 0.0;
+                              controller.setProductQuantity(tableId, product, newQ);
+                              Navigator.pop(context);
+                            },
+                            child: const Text('Onayla', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );

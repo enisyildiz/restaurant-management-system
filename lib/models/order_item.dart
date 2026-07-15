@@ -2,11 +2,13 @@ import 'product.dart';
 
 class OrderItem {
   final Product product;
-  int quantity;
+  double quantity;
+  final DateTime orderTime;
 
   OrderItem({
     required this.product,
     this.quantity = 1,
+    required this.orderTime,
   });
 
   double get totalPrice => product.price * quantity;
@@ -15,13 +17,15 @@ class OrderItem {
     return {
       'product': product.toJson(),
       'quantity': quantity,
+      'orderTime': orderTime.toIso8601String(),
     };
   }
 
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     return OrderItem(
       product: Product.fromJson(json['product']),
-      quantity: json['quantity'] as int,
+      quantity: (json['quantity'] as num).toDouble(),
+      orderTime: DateTime.parse(json['orderTime'] as String),
     );
   }
 }

@@ -14,7 +14,7 @@ class DatabaseService {
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('restaurant_database.db');
+    _database = await _initDB('database.db');
     return _database!;
   }
 
@@ -318,7 +318,7 @@ Future<void> _createAnalyticsTables(Database db) async {
     required int productId,
     required String productName,
     required String productCategory,
-    required int quantityDelta,
+    required double quantityDelta,
     required double unitPrice,
     required double totalPrice,
     String? username,
