@@ -34,7 +34,7 @@ class DatabaseService {
     return await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 3,
+        version: 4,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -43,18 +43,19 @@ class DatabaseService {
 
   Future _createDB(Database db, int version) async {
     await db.execute('''
-CREATE TABLE receipts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  table_id INTEGER NOT NULL,
-  table_code TEXT,
-  table_area TEXT,
-  table_name TEXT NOT NULL,
-  total_amount REAL NOT NULL,
-  total_paid REAL NOT NULL,
-  cash_paid REAL NOT NULL,
-  card_paid REAL NOT NULL,
-  date_closed TEXT NOT NULL
-)
+      CREATE TABLE receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER,
+        table_id INTEGER NOT NULL,
+        table_code TEXT,
+        table_area TEXT,
+        table_name TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        total_paid REAL NOT NULL,
+        cash_paid REAL NOT NULL,
+        card_paid REAL NOT NULL,
+        date_closed TEXT NOT NULL
+      )
 ''');
 
     await db.execute('''
@@ -191,6 +192,10 @@ Future<void> _createAnalyticsTables(Database db) async {
     if (oldVersion < 3) {
       await _createAnalyticsTables(db);
     }
+
+    if (oldVersion < 4) {
+      await db.execute('ALTER TABLE receipts ADD COLUMN session_id INTEGER;');
+    }
   }
 
   Future<void> saveClosedTable(TableModel table) async {
@@ -202,6 +207,7 @@ Future<void> _createAnalyticsTables(Database db) async {
     final double cashPaid = table.totalCashPaid;
     final double cardPaid = table.totalCardPaid;
     final int tableId = table.id;
+    final int? sessionId = table.activeSessionId;
     final String tableCode = table.code;
     final String tableArea = table.area;
     final String tableName = table.name;
@@ -231,6 +237,7 @@ Future<void> _createAnalyticsTables(Database db) async {
 
     for (var orderMap in clonedOrders) {
       await db.insert('receipt_items', {
+        'session_id': sessionId,
         'receipt_id': receiptId,
         'product_id': orderMap['product_id'],
         'product_name': orderMap['product_name'],
@@ -397,39 +404,420 @@ Future<void> _createAnalyticsTables(Database db) async {
       ],
     );
   }
-Future<List<Map<String, dynamic>>> getRecentTableSessions({
+  Future<List<Map<String, dynamic>>> getRecentTableSessions({
+    int limit = 20,
+  }) async {
+    final db = await instance.database;
+
+    return db.query(
+      'table_sessions',
+      orderBy: 'seated_at DESC',
+      limit: limit,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getRecentOrderEvents({
+    int limit = 50,
+  }) async {
+    final db = await instance.database;
+
+    return db.query(
+      'order_events',
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getRecentPaymentEvents({
+    int limit = 50,
+  }) async {
+    final db = await instance.database;
+
+    return db.query(
+      'payment_events',
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getTopProductsBetween({
+  required DateTime start,
+  required DateTime end,
   int limit = 20,
 }) async {
-  final db = await database;
+  final db = await instance.database;
 
-  return db.query(
-    'table_sessions',
-    orderBy: 'seated_at DESC',
-    limit: limit,
+  return db.rawQuery(
+    '''
+    SELECT
+      product_id,
+      product_name,
+      product_category,
+      SUM(quantity_delta) AS total_quantity,
+      SUM(total_price) AS total_revenue
+    FROM order_events
+    WHERE created_at >= ?
+      AND created_at < ?
+      AND event_type IN ('order_added', 'item_removed')
+    GROUP BY product_id, product_name, product_category
+    HAVING SUM(quantity_delta) > 0 OR SUM(total_price) > 0
+    ORDER BY total_quantity DESC
+    LIMIT ?
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+      limit,
+    ],
   );
 }
 
-Future<List<Map<String, dynamic>>> getRecentOrderEvents({
-  int limit = 50,
+  Future<List<Map<String, dynamic>>> getTopProductsByRevenueBetween({
+    required DateTime start,
+    required DateTime end,
+    int limit = 20,
+  }) async {
+    final db = await instance.database;
+
+    return db.rawQuery(
+      '''
+      SELECT
+        product_id,
+        product_name,
+        product_category,
+        SUM(quantity_delta) AS total_quantity,
+        SUM(total_price) AS total_revenue
+      FROM order_events
+      WHERE created_at >= ?
+        AND created_at < ?
+        AND event_type IN ('order_added', 'item_removed')
+      GROUP BY product_id, product_name, product_category
+      HAVING SUM(quantity_delta) > 0 OR SUM(total_price) > 0
+      ORDER BY total_revenue DESC
+      LIMIT ?
+      ''',
+      [
+        start.toIso8601String(),
+        end.toIso8601String(),
+        limit,
+      ],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getTodaysTopProductsByRevenue({
+    int limit = 20,
+  }) async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    return getTopProductsByRevenueBetween(
+      start: start,
+      end: end,
+      limit: limit,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getTodaysTopProducts({
+    int limit = 20,
+  }) async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    return getTopProductsBetween(
+      start: start,
+      end: end,
+      limit: limit,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getCategoryRevenueBetween({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final db = await instance.database;
+
+    return db.rawQuery(
+      '''
+      SELECT
+        product_category,
+        SUM(quantity_delta) AS total_quantity,
+        SUM(total_price) AS total_revenue
+      FROM order_events
+      WHERE created_at >= ?
+        AND created_at < ?
+        AND event_type = 'order_added'
+      GROUP BY product_category
+      ORDER BY total_revenue DESC
+      ''',
+      [
+        start.toIso8601String(),
+        end.toIso8601String(),
+      ],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getTodaysCategoryRevenue() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    return getCategoryRevenueBetween(
+      start: start,
+      end: end,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getHourlyOrderRevenueBetween({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final db = await instance.database;
+
+    return db.rawQuery(
+      '''
+      SELECT
+        strftime('%H', created_at) AS hour,
+        SUM(total_price) AS total_revenue
+      FROM order_events
+      WHERE created_at >= ?
+        AND created_at < ?
+        AND event_type = 'order_added'
+      GROUP BY strftime('%H', created_at)
+      ORDER BY hour ASC
+      ''',
+      [
+        start.toIso8601String(),
+        end.toIso8601String(),
+      ],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getTodaysHourlyOrderRevenue() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    return getHourlyOrderRevenueBetween(
+      start: start,
+      end: end,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getPaymentSummaryBetween({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final db = await instance.database;
+
+    return db.rawQuery(
+      '''
+      SELECT
+        payment_method,
+        SUM(amount) AS total_amount,
+        COUNT(*) AS payment_count
+      FROM payment_events
+      WHERE created_at >= ?
+        AND created_at < ?
+      GROUP BY payment_method
+      ORDER BY total_amount DESC
+      ''',
+      [
+        start.toIso8601String(),
+        end.toIso8601String(),
+      ],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getTodaysPaymentSummary() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    return getPaymentSummaryBetween(
+      start: start,
+      end: end,
+    );
+  }
+
+  Future<double> getAverageSittingDurationMinutesBetween({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final db = await instance.database;
+
+    final result = await db.rawQuery(
+      '''
+      SELECT
+        AVG(strftime('%s', left_at) - strftime('%s', seated_at)) AS avg_seconds
+      FROM table_sessions
+      WHERE status = 'closed'
+        AND left_at IS NOT NULL
+        AND seated_at >= ?
+        AND seated_at < ?
+      ''',
+      [
+        start.toIso8601String(),
+        end.toIso8601String(),
+      ],
+    );
+
+    final value = result.first['avg_seconds'];
+
+    if (value == null) {
+      return 0;
+    }
+
+    return (value as num).toDouble() / 60.0;
+  }
+
+  Future<double> getAverageSittingDurationMinutesToday() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    return getAverageSittingDurationMinutesBetween(
+      start: start,
+      end: end,
+    );
+  }
+Future<List<Map<String, dynamic>>> getReceiptsWithSessionInfo({
+  int limit = 100,
 }) async {
-  final db = await database;
+  final db = await instance.database;
 
-  return db.query(
-    'order_events',
-    orderBy: 'created_at DESC',
-    limit: limit,
+  return db.rawQuery(
+    '''
+    SELECT
+      r.id,
+      r.session_id,
+      r.table_id,
+      r.table_code,
+      r.table_area,
+      r.table_name,
+      r.total_amount,
+      r.total_paid,
+      r.cash_paid,
+      r.card_paid,
+      r.date_closed,
+
+      ts.seated_at,
+      ts.left_at,
+      ts.status AS session_status,
+      ts.total_ordered AS session_total_ordered,
+      ts.total_paid AS session_total_paid,
+
+      CASE
+        WHEN ts.seated_at IS NOT NULL AND ts.left_at IS NOT NULL
+        THEN (strftime('%s', ts.left_at) - strftime('%s', ts.seated_at)) / 60.0
+        ELSE NULL
+      END AS sitting_duration_minutes
+
+    FROM receipts r
+    LEFT JOIN table_sessions ts
+      ON r.session_id = ts.id
+
+    ORDER BY r.date_closed DESC
+    LIMIT ?
+    ''',
+    [limit],
   );
 }
+  Future<double> getBusinessRevenueBetween({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final db = await instance.database;
 
-Future<List<Map<String, dynamic>>> getRecentPaymentEvents({
-  int limit = 50,
+    final result = await db.rawQuery(
+      '''
+      SELECT SUM(total_price) AS total
+      FROM order_events
+      WHERE created_at >= ?
+        AND created_at < ?
+        AND event_type IN ('order_added', 'item_removed')
+      ''',
+      [
+        start.toIso8601String(),
+        end.toIso8601String(),
+      ],
+    );
+
+    final value = result.first['total'];
+
+    if (value == null) {
+      return 0;
+    }
+
+    return (value as num).toDouble();
+  }
+
+  Future<double> getTodaysBusinessRevenue() async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+
+    return getBusinessRevenueBetween(
+      start: start,
+      end: end,
+    );
+  }
+    Future<List<Map<String, dynamic>>> getSessionOrderDetails({
+    required int sessionId,
+  }) async {
+    final db = await instance.database;
+
+    return db.rawQuery(
+      '''
+      SELECT
+        product_id,
+        product_name,
+        product_category,
+        SUM(quantity_delta) AS total_quantity,
+        SUM(total_price) AS total_price
+      FROM order_events
+      WHERE session_id = ?
+        AND event_type IN ('order_added', 'item_removed')
+      GROUP BY product_id, product_name, product_category
+      HAVING total_quantity != 0 OR total_price != 0
+      ORDER BY product_category ASC, product_name ASC
+      ''',
+      [sessionId],
+    );
+  }
+
+Future<List<Map<String, dynamic>>> getTodaysProductSales({
+  int limit = 1000,
 }) async {
-  final db = await database;
+  final now = DateTime.now();
+  final start = DateTime(now.year, now.month, now.day);
+  final end = start.add(const Duration(days: 1));
 
-  return db.query(
-    'payment_events',
-    orderBy: 'created_at DESC',
-    limit: limit,
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      product_id,
+      product_name,
+      product_category,
+      SUM(quantity_delta) AS total_quantity,
+      SUM(total_price) AS total_revenue
+    FROM order_events
+    WHERE created_at >= ?
+      AND created_at < ?
+      AND event_type IN ('order_added', 'item_removed')
+    GROUP BY product_id, product_name, product_category
+    HAVING SUM(quantity_delta) > 0 OR SUM(total_price) > 0
+    LIMIT ?
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+      limit,
+    ],
   );
 }
+
 }
