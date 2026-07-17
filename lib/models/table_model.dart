@@ -1,3 +1,4 @@
+import 'order_group.dart';
 import 'order_item.dart';
 import 'payment_record.dart';
 
@@ -9,7 +10,7 @@ class TableModel {
   final String name;
   final String area;
   TableStatus status;
-  List<OrderItem> orders;
+  List<OrderGroup> orderGroups;
   List<PaymentRecord> payments;
 
   int? activeSessionId;
@@ -21,15 +22,33 @@ class TableModel {
   required this.name,
   required this.area,
   this.status = TableStatus.empty,
-  List<OrderItem>? orders,
+  List<OrderGroup>? orderGroups,
   List<PaymentRecord>? payments,
   this.activeSessionId,
   this.seatedAt,
-}) : orders = orders ?? [],
+}) : orderGroups = orderGroups ?? [],
       payments = payments ?? [];
 
+  List<OrderItem> get orders {
+    final Map<int, OrderItem> map = {};
+    for (final group in orderGroups) {
+      for (final item in group.items) {
+        if (map.containsKey(item.product.id)) {
+          map[item.product.id]!.quantity += item.quantity;
+        } else {
+          map[item.product.id] = OrderItem(
+            product: item.product,
+            quantity: item.quantity,
+            orderTime: item.orderTime,
+          );
+        }
+      }
+    }
+    return map.values.toList();
+  }
+
   double get currentTotal {
-    return orders.fold(0, (sum, item) => sum + item.totalPrice);
+    return orderGroups.fold(0, (sum, group) => sum + group.totalPrice);
   }
 
   double get totalPaid => payments.fold(
@@ -54,7 +73,7 @@ class TableModel {
       'name': name,
       'area': area,
       'status': status.toString(),
-      'orders': orders.map((e) => e.toJson()).toList(),
+      'orderGroups': orderGroups.map((o) => o.toJson()).toList(),
       'payments': payments.map((e) => e.toJson()).toList(),
       'activeSessionId': activeSessionId,
       'seatedAt': seatedAt?.toIso8601String(),
@@ -71,8 +90,8 @@ class TableModel {
         (e) => e.toString() == json['status'],
         orElse: () => TableStatus.empty,
       ),
-      orders: (json['orders'] as List<dynamic>?)
-              ?.map((e) => OrderItem.fromJson(e as Map<String, dynamic>))
+      orderGroups: (json['orderGroups'] as List<dynamic>?)
+              ?.map((o) => OrderGroup.fromJson(o as Map<String, dynamic>))
               .toList() ??
           [],
       payments: (json['payments'] as List<dynamic>?)

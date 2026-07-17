@@ -12,6 +12,7 @@ import 'package:printing/printing.dart';
 import '../models/product.dart';
 import '../models/table_model.dart';
 import '../models/order_item.dart';
+import '../models/order_group.dart';
 import '../models/payment_record.dart';
 import '../models/user_role.dart';
 import '../services/network_service.dart';
@@ -601,20 +602,30 @@ void _closeSessionIfAdmin(TableModel table) {
   }());
 }
 
+OrderGroup _getOrCreateActiveGroup(TableModel table) {
+  if (table.orderGroups.isEmpty || table.orderGroups.last.isPrintedToKitchen) {
+    final newGroup = OrderGroup();
+    table.orderGroups.add(newGroup);
+    return newGroup;
+  }
+  return table.orderGroups.last;
+}
+
 void addProductToTable(
   int tableId,
   Product product, {
   bool fromNetwork = false,
 }) {
   final table = tables.firstWhere((t) => t.id == tableId);
-  final existingItemIndex = table.orders.indexWhere(
+  final activeGroup = _getOrCreateActiveGroup(table);
+  final existingItemIndex = activeGroup.items.indexWhere(
     (item) => item.product.id == product.id,
   );
 
   if (existingItemIndex >= 0) {
-    table.orders[existingItemIndex].quantity += 1.0;
+    activeGroup.items[existingItemIndex].quantity += 1.0;
   } else {
-    table.orders.add(OrderItem(product: product, orderTime: DateTime.now()));
+    activeGroup.items.add(OrderItem(product: product, orderTime: DateTime.now()));
   }
 
   table.status = TableStatus.occupied;
@@ -655,35 +666,50 @@ void setProductQuantity(
   }
 
   final table = tables.firstWhere((t) => t.id == tableId);
-  final existingItemIndex = table.orders.indexWhere(
-    (item) => item.product.id == product.id,
-  );
+  final oldQuantity = table.orders.where((item) => item.product.id == product.id).fold(0.0, (sum, item) => sum + item.quantity);
+  final delta = newQuantity - oldQuantity;
 
-  if (existingItemIndex >= 0) {
-    final oldQuantity = table.orders[existingItemIndex].quantity;
-    final delta = newQuantity - oldQuantity;
-    table.orders[existingItemIndex].quantity = newQuantity;
+  if (delta == 0) return;
 
-    _logOrderEventIfAdmin(
-      table: table,
-      product: product,
-      eventType: 'quantity_updated',
-      quantityDelta: delta,
-      totalPrice: product.price * delta,
-    );
+  if (delta > 0) {
+    final activeGroup = _getOrCreateActiveGroup(table);
+    final existingItemIndex = activeGroup.items.indexWhere((item) => item.product.id == product.id);
+    if (existingItemIndex >= 0) {
+      activeGroup.items[existingItemIndex].quantity += delta;
+    } else {
+      activeGroup.items.add(OrderItem(product: product, quantity: delta, orderTime: DateTime.now()));
+    }
   } else {
-    table.orders.add(OrderItem(product: product, quantity: newQuantity, orderTime: DateTime.now()));
-    table.status = TableStatus.occupied;
-    table.seatedAt ??= DateTime.now();
-
-    _logOrderEventIfAdmin(
-      table: table,
-      product: product,
-      eventType: 'order_added',
-      quantityDelta: newQuantity,
-      totalPrice: product.price * newQuantity,
-    );
+    double amountToRemove = -delta;
+    for (int i = table.orderGroups.length - 1; i >= 0; i--) {
+      if (amountToRemove <= 0) break;
+      final group = table.orderGroups[i];
+      final itemIndex = group.items.indexWhere((item) => item.product.id == product.id);
+      if (itemIndex >= 0) {
+        if (group.items[itemIndex].quantity <= amountToRemove) {
+          amountToRemove -= group.items[itemIndex].quantity;
+          group.items.removeAt(itemIndex);
+        } else {
+          group.items[itemIndex].quantity -= amountToRemove;
+          amountToRemove = 0;
+        }
+      }
+      if (group.items.isEmpty && !group.isPrintedToKitchen) {
+        table.orderGroups.removeAt(i);
+      }
+    }
   }
+
+  table.status = TableStatus.occupied;
+  table.seatedAt ??= DateTime.now();
+
+  _logOrderEventIfAdmin(
+    table: table,
+    product: product,
+    eventType: 'quantity_updated',
+    quantityDelta: delta,
+    totalPrice: product.price * delta,
+  );
 
   if (!fromNetwork && _networkService != null) {
     _networkService!.sendMessage({
@@ -703,26 +729,30 @@ void removeProductFromTable(
   bool fromNetwork = false,
 }) {
   final table = tables.firstWhere((t) => t.id == tableId);
-  final existingItemIndex = table.orders.indexWhere(
-    (item) => item.product.id == product.id,
-  );
+  final oldQuantity = table.orders.where((item) => item.product.id == product.id).fold(0.0, (sum, item) => sum + item.quantity);
 
-  if (existingItemIndex >= 0) {
-    final oldQuantity = table.orders[existingItemIndex].quantity;
-    table.orders.removeAt(existingItemIndex);
+  if (oldQuantity == 0) return;
 
-    _logOrderEventIfAdmin(
-      table: table,
-      product: product,
-      eventType: 'item_removed',
-      quantityDelta: -oldQuantity,
-      totalPrice: -(product.price * oldQuantity),
-    );
+  for (int i = table.orderGroups.length - 1; i >= 0; i--) {
+    final group = table.orderGroups[i];
+    final itemIndex = group.items.indexWhere((item) => item.product.id == product.id);
+    if (itemIndex >= 0) {
+      group.items.removeAt(itemIndex);
+    }
   }
 
-  if (table.orders.isEmpty) {
-    _closeSessionIfAdmin(table);
+  table.orderGroups.removeWhere((g) => g.items.isEmpty && !g.isPrintedToKitchen);
 
+  _logOrderEventIfAdmin(
+    table: table,
+    product: product,
+    eventType: 'item_removed',
+    quantityDelta: -oldQuantity,
+    totalPrice: -(product.price * oldQuantity),
+  );
+
+  if (table.orderGroups.isEmpty || table.orderGroups.every((g) => g.items.isEmpty)) {
+    _closeSessionIfAdmin(table);
     table.status = TableStatus.empty;
     table.activeSessionId = null;
     table.seatedAt = null;
@@ -750,7 +780,7 @@ void removeProductFromTable(
     _closeSessionIfAdmin(table);
   }
 
-    table.orders.clear();
+    table.orderGroups.clear();
     table.payments.clear();
     table.status = TableStatus.empty;
 
@@ -780,7 +810,21 @@ void removeProductFromTable(
 
     Printer? selectedPrinter;
 
-    if (table.orders.isEmpty) return;
+    if (table.orderGroups.isEmpty) return;
+
+    List<OrderItem> itemsToPrint = [];
+    List<OrderGroup> unprintedGroups = [];
+
+    if (target == PrintTarget.kitchen) {
+      unprintedGroups = table.orderGroups.where((g) => !g.isPrintedToKitchen && g.items.isNotEmpty).toList();
+      if (unprintedGroups.isEmpty) {
+        _showSnackbar('Yazdırılacak yeni sipariş yok.', true);
+        return;
+      }
+      itemsToPrint = unprintedGroups.expand((g) => g.items).toList();
+    } else {
+      itemsToPrint = table.orders;
+    }
 
     try {
       selectedPrinter = printers.firstWhere((p) => p.name == targetPrinterName);
@@ -809,7 +853,7 @@ void removeProductFromTable(
               pw.SizedBox(height: 10),
               pw.Text('Masa No: $tableId', style: const pw.TextStyle(fontSize: 18)),
               pw.Divider(),
-              ..._buildOrderRows(table.orders, target),
+              ..._buildOrderRows(itemsToPrint, target),
               if (target == PrintTarget.cashier) ...[
                 pw.Divider(),
                 pw.Row(
@@ -831,6 +875,12 @@ void removeProductFromTable(
         printer: selectedPrinter,
         onLayout: (PdfPageFormat format) async => pdf.save(),
       );
+      
+      if (target == PrintTarget.kitchen) {
+        for (final group in unprintedGroups) {
+          group.isPrintedToKitchen = true;
+        }
+      }
     } catch (e) {
       _showSnackbar("Yazdırma Hatası: $e", true);
     }
@@ -903,7 +953,7 @@ void removeProductFromTable(
 
   final movedSessionId = currentTable.activeSessionId;
 
-  targetTable.orders.addAll(currentTable.orders);
+  targetTable.orderGroups.addAll(currentTable.orderGroups);
   targetTable.payments.addAll(currentTable.payments);
 
   // Preserve the current table status instead of always forcing occupied.
@@ -924,7 +974,7 @@ void removeProductFromTable(
     );
   }
 
-  currentTable.orders.clear();
+  currentTable.orderGroups.clear();
   currentTable.payments.clear();
   currentTable.status = TableStatus.empty;
   currentTable.activeSessionId = null;
