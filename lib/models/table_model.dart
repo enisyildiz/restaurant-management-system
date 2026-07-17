@@ -1,6 +1,7 @@
 import 'order_group.dart';
 import 'order_item.dart';
 import 'payment_record.dart';
+import 'product.dart';
 
 enum TableStatus { empty, occupied }
 
@@ -15,6 +16,7 @@ class TableModel {
 
   int? activeSessionId;
   DateTime? seatedAt;
+  Map<int, double> customPrices;
 
   TableModel({
   required this.id,
@@ -26,8 +28,10 @@ class TableModel {
   List<PaymentRecord>? payments,
   this.activeSessionId,
   this.seatedAt,
+  Map<int, double>? customPrices,
 }) : orderGroups = orderGroups ?? [],
-      payments = payments ?? [];
+      payments = payments ?? [],
+      customPrices = customPrices ?? {};
 
   List<OrderItem> get orders {
     final Map<int, OrderItem> map = {};
@@ -36,8 +40,15 @@ class TableModel {
         if (map.containsKey(item.product.id)) {
           map[item.product.id]!.quantity += item.quantity;
         } else {
+          final effectivePrice = customPrices[item.product.id] ?? item.product.price;
+          final effectiveProduct = Product(
+            id: item.product.id,
+            name: item.product.name,
+            price: effectivePrice,
+            category: item.product.category,
+          );
           map[item.product.id] = OrderItem(
-            product: item.product,
+            product: effectiveProduct,
             quantity: item.quantity,
             orderTime: item.orderTime,
           );
@@ -48,7 +59,14 @@ class TableModel {
   }
 
   double get currentTotal {
-    return orderGroups.fold(0, (sum, group) => sum + group.totalPrice);
+    double total = 0;
+    for (final group in orderGroups) {
+      for (final item in group.items) {
+        final price = customPrices[item.product.id] ?? item.product.price;
+        total += price * item.quantity;
+      }
+    }
+    return total;
   }
 
   double get totalPaid => payments.fold(
@@ -81,6 +99,7 @@ class TableModel {
       'payments': payments.map((e) => e.toJson()).toList(),
       'activeSessionId': activeSessionId,
       'seatedAt': seatedAt?.toIso8601String(),
+      'customPrices': customPrices.map((key, value) => MapEntry(key.toString(), value)),
     };
   }
 
@@ -106,6 +125,11 @@ class TableModel {
       seatedAt: json['seatedAt'] == null
           ? null
           : DateTime.parse(json['seatedAt'] as String),
+      customPrices: json['customPrices'] == null
+          ? {}
+          : (json['customPrices'] as Map<String, dynamic>).map(
+              (key, value) => MapEntry(int.parse(key), (value as num).toDouble()),
+            ),
     );
   }
 }

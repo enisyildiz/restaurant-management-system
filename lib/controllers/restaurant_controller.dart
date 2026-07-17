@@ -162,6 +162,8 @@ class RestaurantController extends ChangeNotifier {
       final methodStr = data['method'];
       final method = PaymentMethod.values.firstWhere((e) => e.toString() == methodStr);
       addPaymentToTable(tableId: data['tableId'], amount: data['amount'], method: method, fromNetwork: true);
+    } else if (action == 'set_custom_price') {
+      setCustomPrice(data['tableId'], data['productId'], (data['price'] as num).toDouble(), fromNetwork: true);
     }
   }
 
@@ -182,6 +184,25 @@ class RestaurantController extends ChangeNotifier {
   void changeCategory(String category) {
     selectedCategory = category;
     notifyListeners();
+  }
+
+  void setCustomPrice(int tableId, int productId, double newPrice, {bool fromNetwork = false}) {
+    final tableIndex = tables.indexWhere((t) => t.id == tableId);
+    if (tableIndex != -1) {
+      tables[tableIndex].customPrices[productId] = newPrice;
+      notifyListeners();
+
+      if (!fromNetwork && _networkService != null) {
+        _networkService!.sendMessage({
+          'action': 'set_custom_price',
+          'tableId': tableId,
+          'productId': productId,
+          'price': newPrice,
+        });
+      }
+      
+      saveTables(tables);
+    }
   }
 
   List<TableModel> tables = [];
