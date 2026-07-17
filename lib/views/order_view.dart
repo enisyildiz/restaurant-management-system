@@ -220,116 +220,7 @@ class OrderView extends StatelessWidget {
                                     height: 50,
                                     child: ElevatedButton(
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.pastelRed,
-                                        foregroundColor: AppTheme.textDark,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      onPressed: table.orders.isEmpty
-                                          ? null
-                                          : () {
-                                              if (table.remainingAmount > 0) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(
-                                                    content: Text('Ödemenin tamamı alınmadan hesap kapatılamaz!'),
-                                                    backgroundColor: AppTheme.pastelRed,
-                                                  ),
-                                                );
-                                                return;
-                                              }
-                                              controller.checkoutTable(tableId);
-                                              Navigator.pop(context);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('Sipariş tamamlandı ve masa kapatıldı.')),
-                                              );
-                                            },
-                                      child: const Text('Hesabı Kapat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 50,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.pastelBlue, // Renk değiştirildi
-                                        foregroundColor: AppTheme.textDark,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      onPressed: table.orders.isEmpty
-                                          ? null
-                                          : () {
-                                              _showMoveTableDialog(context, controller, table);
-                                            },
-                                      child: const Text('Masayı Taşı', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 50,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.pastelGreen,
-                                        foregroundColor: AppTheme.textDark,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      onPressed: table.orders.isEmpty
-                                          ? null
-                                          : () {
-                                                  controller.saveTable(tableId);
-                                                  Navigator.pop(context);
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(content: Text('Siparişler kayıt edildi.')),
-                                              );
-                                            },
-                                      child: const Text('Kaydet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 50,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.pastelYellow, 
-                                        foregroundColor: AppTheme.textDark,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      ),
-                                      onPressed: table.orders.isEmpty
-                                          ? null
-                                          : () {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) => PaymentView(
-                                                    controller: controller,
-                                                    tableId: tableId,
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                      child: const Text('Ödeme Al', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 50,
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.pastelBlue,
+                                        backgroundColor: Colors.orange.shade200,
                                         foregroundColor: AppTheme.textDark,
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                       ),
@@ -341,7 +232,7 @@ class OrderView extends StatelessWidget {
                                                 const SnackBar(content: Text('Mutfak Adisyonu Yazdırıldı.')),
                                               );
                                             },
-                                      child: const Text('Mutfak Adisyonu Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      child: const Text('Mutfak Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                     ),
                                   ),
                                 ),
@@ -363,10 +254,62 @@ class OrderView extends StatelessWidget {
                                                 const SnackBar(content: Text('Kasa Adisyonu Yazdırıldı.')),
                                               );
                                             },
-                                      child: const Text('Kasa Adisyonu Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      child: const Text('Kasa Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                     ),
                                   ),
                                 ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 50,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.pastelBlue,
+                                        foregroundColor: AppTheme.textDark,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: table.orders.isEmpty
+                                          ? null
+                                          : () {
+                                              _showMoveTableDialog(context, controller, table);
+                                            },
+                                      child: const Text('Masayı Taşı', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ),
+                                ),
+                                if (controller.currentUser?.role.name == 'admin') ...[
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: SizedBox(
+                                      height: 50,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: AppTheme.pastelYellow,
+                                          foregroundColor: AppTheme.textDark,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        ),
+                                        onPressed: table.orders.isEmpty
+                                            ? null
+                                            : () {
+                                                Navigator.push(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (_) => PaymentView(
+                                                      controller: controller,
+                                                      tableId: tableId,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                        child: const Text('Ödeme Al', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ],
