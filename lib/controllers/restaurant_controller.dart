@@ -893,37 +893,54 @@ void removeProductFromTable(
   }
 
   void moveTable(int currentTableId, int targetTableId, {bool fromNetwork = false}) {
-    final currentTable = tables.firstWhere((t) => t.id == currentTableId);
-    final targetTable = tables.firstWhere((t) => t.id == targetTableId);
+  final currentTable = tables.firstWhere((t) => t.id == currentTableId);
+  final targetTable = tables.firstWhere((t) => t.id == targetTableId);
 
-    if (targetTable.orders.isNotEmpty && !fromNetwork) {
-      _showSnackbar('Taşıma başarısız: Hedef masa boş değil!', false);
-      return; 
-    }
-
-    targetTable.orders.addAll(currentTable.orders);
-    targetTable.payments.addAll(currentTable.payments);
-    targetTable.status = TableStatus.occupied;
-    targetTable.activeSessionId = currentTable.activeSessionId;
-    targetTable.seatedAt = currentTable.seatedAt;
-
-    currentTable.orders.clear();
-    currentTable.payments.clear();
-    currentTable.status = TableStatus.empty;
-    currentTable.activeSessionId = null;
-    currentTable.seatedAt = null;
-    
-    if (!fromNetwork && _networkService != null) {
-      _networkService!.sendMessage({
-        'action': 'move_table',
-        'currentTableId': currentTableId,
-        'targetTableId': targetTableId,
-      });
-      _showSnackbar('Masa başarıyla taşındı.', true);
-    }
-
-    notifyListeners();
+  if (targetTable.orders.isNotEmpty && !fromNetwork) {
+    _showSnackbar('Taşıma başarısız: Hedef masa boş değil!', false);
+    return;
   }
+
+  final movedSessionId = currentTable.activeSessionId;
+
+  targetTable.orders.addAll(currentTable.orders);
+  targetTable.payments.addAll(currentTable.payments);
+
+  // Preserve the current table status instead of always forcing occupied.
+  targetTable.status = currentTable.status;
+
+  targetTable.activeSessionId = currentTable.activeSessionId;
+  targetTable.seatedAt = currentTable.seatedAt;
+
+  if (_isAdminDevice && movedSessionId != null) {
+    unawaited(
+      DatabaseService.instance.updateActiveSessionTableInfo(
+        sessionId: movedSessionId,
+        tableId: targetTable.id,
+        tableCode: targetTable.code,
+        tableArea: targetTable.area,
+        tableName: targetTable.name,
+      ),
+    );
+  }
+
+  currentTable.orders.clear();
+  currentTable.payments.clear();
+  currentTable.status = TableStatus.empty;
+  currentTable.activeSessionId = null;
+  currentTable.seatedAt = null;
+
+  if (!fromNetwork && _networkService != null) {
+    _networkService!.sendMessage({
+      'action': 'move_table',
+      'currentTableId': currentTableId,
+      'targetTableId': targetTableId,
+    });
+    _showSnackbar('Masa başarıyla taşındı.', true);
+  }
+
+  notifyListeners();
+}
 
   List<OrderItem> ordersForTable(int tableId) {
     final index = tables.indexWhere((t) => t.id == tableId);

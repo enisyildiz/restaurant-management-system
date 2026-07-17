@@ -819,5 +819,80 @@ Future<List<Map<String, dynamic>>> getTodaysProductSales({
     ],
   );
 }
+Future<void> updateActiveSessionTableInfo({
+  required int sessionId,
+  required int tableId,
+  required String tableCode,
+  required String tableArea,
+  required String tableName,
+}) async {
+  final db = await instance.database;
 
+  final values = {
+    'table_id': tableId,
+    'table_code': tableCode,
+    'table_area': tableArea,
+    'table_name': tableName,
+  };
+
+  await db.transaction((txn) async {
+    await txn.update(
+      'table_sessions',
+      values,
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+
+    await txn.update(
+      'order_events',
+      values,
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+
+    await txn.update(
+      'payment_events',
+      values,
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+  });
+}
+Future<List<double>> getHourlyBusinessRevenueForDate(DateTime date) async {
+  final db = await instance.database;
+
+  final start = DateTime(date.year, date.month, date.day);
+  final end = start.add(const Duration(days: 1));
+
+  final result = await db.rawQuery(
+    '''
+    SELECT
+      CAST(substr(created_at, 12, 2) AS INTEGER) AS hour,
+      SUM(total_price) AS total
+    FROM order_events
+    WHERE created_at >= ?
+      AND created_at < ?
+      AND event_type IN ('order_added', 'item_removed')
+    GROUP BY CAST(substr(created_at, 12, 2) AS INTEGER)
+    ORDER BY hour ASC
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+
+  final hourlyTotals = List<double>.filled(24, 0);
+
+  for (final row in result) {
+    final hour = ((row['hour'] as num?) ?? 0).toInt();
+    final total = ((row['total'] as num?) ?? 0).toDouble();
+
+    if (hour >= 0 && hour < 24) {
+      hourlyTotals[hour] = total;
+    }
+  }
+
+  return hourlyTotals;
+}
 }

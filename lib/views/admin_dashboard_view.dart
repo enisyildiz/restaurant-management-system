@@ -4,7 +4,7 @@ import '../controllers/restaurant_controller.dart';
 import '../models/table_model.dart';
 import '../theme/theme.dart';
 import '../services/database_service.dart';
-
+import 'dart:async';
 
 class AdminDashboardView extends StatefulWidget {
   final RestaurantController controller;
@@ -142,6 +142,10 @@ class _GeneralStatsPage extends StatelessWidget {
                   _buildStatCard('Açık Sipariş Toplamı', '${activeOrderAmount.toStringAsFixed(2)} ₺', Icons.receipt_long, AppTheme.pastelYellow),
                 ],
               ),
+              const SizedBox(height: 24),
+              const Expanded(
+                child: _LiveHourlyComparisonGraph(),
+),
             ],
           ),
         );
@@ -201,6 +205,1208 @@ class _GeneralStatsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+// --------------------------------------------------------------------
+// CANLI SAATLİK CİRO KARŞILAŞTIRMA GRAFİĞİ
+// --------------------------------------------------------------------
+class _LiveHourlyComparisonGraph extends StatefulWidget {
+  const _LiveHourlyComparisonGraph();
+
+  @override
+  State<_LiveHourlyComparisonGraph> createState() =>
+      _LiveHourlyComparisonGraphState();
+}
+
+class _LiveHourlyComparisonGraphState
+    extends State<_LiveHourlyComparisonGraph> {
+  Timer? _timer;
+
+  bool isLoading = true;
+  List<double> todayHourly = List<double>.filled(24, 0);
+  List<double> yesterdayHourly = List<double>.filled(24, 0);
+  DateTime lastUpdated = DateTime.now();
+
+  int? hoveredCompletedHour;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGraphData();
+
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _loadGraphData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadGraphData() async {
+    final now = DateTime.now();
+
+    final todayData =
+        await DatabaseService.instance.getHourlyBusinessRevenueForDate(now);
+
+    final yesterdayData =
+        await DatabaseService.instance.getHourlyBusinessRevenueForDate(
+      now.subtract(const Duration(days: 1)),
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      todayHourly = todayData;
+      yesterdayHourly = yesterdayData;
+      lastUpdated = now;
+      isLoading = false;
+    });
+  }
+
+  double _sumUntilHour(List<double> values, int exclusiveHour) {
+    if (exclusiveHour <= 0) return 0;
+
+    final safeHour = exclusiveHour.clamp(0, 24);
+
+    double total = 0;
+    for (int i = 0; i < safeHour; i++) {
+      total += values[i];
+    }
+
+    return total;
+  }
+
+  double _percentageDifference(double today, double yesterday) {
+    if (yesterday == 0) {
+      if (today == 0) return 0;
+      return 100;
+    }
+
+    return ((today / yesterday) - 1) * 100;
+  }
+
+  int? _hoveredHourFromPosition({
+  required Offset localPosition,
+  required Size size,
+}) {
+  final completedHour = lastUpdated.hour;
+
+  if (completedHour <= 0) {
+    return null;
+  }
+
+  const double leftPadding = 72;
+  const double rightPadding = 24;
+  const double topPadding = 16;
+  const double bottomPadding = 46;
+
+  final chartLeft = leftPadding;
+  final chartRight = size.width - rightPadding;
+  final chartTop = topPadding;
+  final chartBottom = size.height - bottomPadding;
+  final chartWidth = chartRight - chartLeft;
+
+  if (localPosition.dx < chartLeft ||
+      localPosition.dx > chartRight ||
+      localPosition.dy < chartTop ||
+      localPosition.dy > chartBottom) {
+    return null;
+  }
+
+  final relativeX = localPosition.dx - chartLeft;
+  final rawHour = ((relativeX / chartWidth) * 24).round();
+
+  return rawHour.clamp(1, completedHour).toInt();
+}
+
+_HourlyHoverInfo _buildHoverInfo(int completedHour) {
+  final todayValue = _sumUntilHour(todayHourly, completedHour);
+  final yesterdayValue = _sumUntilHour(yesterdayHourly, completedHour);
+  final differenceAmount = todayValue - yesterdayValue;
+  final percentage = _percentageDifference(todayValue, yesterdayValue);
+
+  return _HourlyHoverInfo(
+    completedHour: completedHour,
+    todayValue: todayValue,
+    yesterdayValue: yesterdayValue,
+    differenceAmount: differenceAmount,
+    percentage: percentage,
+  );
+}
+
+Offset _tooltipOffsetForHour({
+  required int completedHour,
+  required Size size,
+}) {
+  const double leftPadding = 72;
+  const double rightPadding = 24;
+
+  final chartLeft = leftPadding;
+  final chartRight = size.width - rightPadding;
+  final chartWidth = chartRight - chartLeft;
+
+  final x = chartLeft + (completedHour / 24.0) * chartWidth;
+
+  final tooltipX = x > size.width - 260 ? size.width - 270 : x + 12;
+
+  return Offset(
+    tooltipX.clamp(12.0, size.width - 270),
+    18,
+  );
+}
+
+  List<_HourlyGraphPoint> _buildYesterdayPoints() {
+    final points = <_HourlyGraphPoint>[];
+    double cumulative = 0;
+
+    points.add(const _HourlyGraphPoint(hour: 0, revenue: 0));
+
+    for (int hour = 0; hour < 24; hour++) {
+      cumulative += yesterdayHourly[hour];
+      points.add(
+        _HourlyGraphPoint(
+          hour: hour + 1.0,
+          revenue: cumulative,
+        ),
+      );
+    }
+
+    return points;
+  }
+
+  List<_HourlyGraphPoint> _buildTodayPoints() {
+    final points = <_HourlyGraphPoint>[];
+    final now = lastUpdated;
+
+    double cumulative = 0;
+    points.add(const _HourlyGraphPoint(hour: 0, revenue: 0));
+
+    for (int hour = 0; hour < now.hour; hour++) {
+      cumulative += todayHourly[hour];
+      points.add(
+        _HourlyGraphPoint(
+          hour: hour + 1.0,
+          revenue: cumulative,
+        ),
+      );
+    }
+
+    final currentHourProgress =
+        now.hour + (now.minute / 60) + (now.second / 3600);
+
+    cumulative += todayHourly[now.hour];
+
+    points.add(
+      _HourlyGraphPoint(
+        hour: currentHourProgress,
+        revenue: cumulative,
+      ),
+    );
+
+    return points;
+  }
+
+  @override
+Widget build(BuildContext context) {
+  if (isLoading) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppTheme.textMuted.withOpacity(0.12),
+        ),
+      ),
+      child: const Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  final completedHour = lastUpdated.hour;
+
+  final todayCompleted = _sumUntilHour(todayHourly, completedHour);
+  final yesterdayCompleted = _sumUntilHour(yesterdayHourly, completedHour);
+  final completedDifference =
+      _percentageDifference(todayCompleted, yesterdayCompleted);
+
+  final todayCurrentHour = todayHourly[lastUpdated.hour];
+  final yesterdayCurrentHour = yesterdayHourly[lastUpdated.hour];
+  final currentHourDifference =
+      _percentageDifference(todayCurrentHour, yesterdayCurrentHour);
+
+  final todayPoints = _buildTodayPoints();
+  final yesterdayPoints = _buildYesterdayPoints();
+
+  final double todayTotal =
+      todayPoints.isEmpty ? 0.0 : todayPoints.last.revenue;
+
+  final double yesterdaySamePoint =
+      yesterdayCompleted + yesterdayCurrentHour;
+
+  final overallDifference =
+      _percentageDifference(todayTotal, yesterdaySamePoint);
+
+  final double maxRevenue = dart_math.max(
+    100.0,
+    dart_math.max(
+      todayPoints.fold<double>(
+        0.0,
+        (max, p) => dart_math.max(max, p.revenue),
+      ),
+      yesterdayPoints.fold<double>(
+        0.0,
+        (max, p) => dart_math.max(max, p.revenue),
+      ),
+    ),
+  );
+
+  const Color todayColor = Color(0xFFFF9F1C);
+  const Color yesterdayColor = Color(0xFFB0B7C3);
+
+  final bool isPositive = overallDifference >= 0;
+  final Color diffColor = isPositive ? Colors.green : Colors.red;
+
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(28),
+    decoration: BoxDecoration(
+      color: AppTheme.surfaceLight,
+      borderRadius: BorderRadius.circular(24),
+      border: Border.all(
+        color: AppTheme.textMuted.withOpacity(0.12),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: AppTheme.textMuted.withOpacity(0.05),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'GÜNLÜK SATIŞIM',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 14,
+                    runSpacing: 10,
+                    children: [
+                      Text(
+                        _formatMoneyLarge(todayTotal),
+                        style: const TextStyle(
+                          fontSize: 54,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textDark,
+                          height: 1.0,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: diffColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isPositive
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
+                              size: 18,
+                              color: diffColor,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '%${overallDifference.toStringAsFixed(1)}',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: diffColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.textMuted.withOpacity(0.12),
+                      ),
+                    ),
+                    child: Text(
+                      'Dünkü aynı saat toplamı: ${_formatMoneyLarge(yesterdaySamePoint)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 24),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'Son Güncelleme: ${_formatFullDateTime(lastUpdated)}',
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _GraphLegendDot(color: todayColor, label: 'Bugün'),
+                    SizedBox(width: 18),
+                    _GraphLegendDot(color: yesterdayColor, label: 'Dün'),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 22),
+
+        Row(
+          children: [
+            Expanded(
+              child: _MiniGraphInfoCard(
+                title: 'Tamamlanan Saatler',
+                value:
+                    '${_formatMoneyLarge(todayCompleted)} / Dün: ${_formatMoneyLarge(yesterdayCompleted)}',
+                percentage: completedDifference,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: _MiniGraphInfoCard(
+                title: 'Bu Saat',
+                value:
+                    '${_formatMoneyLarge(todayCurrentHour)} / Dün: ${_formatMoneyLarge(yesterdayCurrentHour)}',
+                percentage: currentHourDifference,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        Expanded(
+  child: Container(
+    padding: const EdgeInsets.fromLTRB(8, 12, 12, 8),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.45),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(
+        color: AppTheme.textMuted.withOpacity(0.08),
+      ),
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final chartSize = Size(
+          constraints.maxWidth,
+          constraints.maxHeight,
+        );
+
+        final hoverInfo = hoveredCompletedHour == null
+            ? null
+            : _buildHoverInfo(hoveredCompletedHour!);
+
+        final tooltipOffset = hoveredCompletedHour == null
+            ? null
+            : _tooltipOffsetForHour(
+                completedHour: hoveredCompletedHour!,
+                size: chartSize,
+              );
+
+        return MouseRegion(
+          onHover: (event) {
+            final hour = _hoveredHourFromPosition(
+              localPosition: event.localPosition,
+              size: chartSize,
+            );
+
+            if (hour != hoveredCompletedHour) {
+              setState(() {
+                hoveredCompletedHour = hour;
+              });
+            }
+          },
+          onExit: (_) {
+            setState(() {
+              hoveredCompletedHour = null;
+            });
+          },
+          child: Stack(
+            children: [
+              CustomPaint(
+                painter: _HourlyRevenueChartPainter(
+                  todayPoints: todayPoints,
+                  yesterdayPoints: yesterdayPoints,
+                  maxRevenue: maxRevenue * 1.10,
+                  todayColor: todayColor,
+                  yesterdayColor: yesterdayColor,
+                  hoveredCompletedHour: hoveredCompletedHour,
+                ),
+                child: const SizedBox.expand(),
+              ),
+
+              if (hoverInfo != null && tooltipOffset != null)
+                Positioned(
+                  left: tooltipOffset.dx,
+                  top: tooltipOffset.dy,
+                  child: _HourlyHoverTooltip(info: hoverInfo),
+                ),
+            ],
+          ),
+        );
+      },
+    ),
+  ),
+),
+      ],
+    ),
+  );
+}
+}
+
+class _ComparisonInfoBox extends StatelessWidget {
+  final String title;
+  final String description;
+  final double todayValue;
+  final double yesterdayValue;
+  final double percentage;
+
+  const _ComparisonInfoBox({
+    required this.title,
+    required this.description,
+    required this.todayValue,
+    required this.yesterdayValue,
+    required this.percentage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isPositive = percentage >= 0;
+    final percentageColor = isPositive ? Colors.green : Colors.red;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppTheme.textMuted.withOpacity(0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppTheme.textDark,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: const TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            _formatMoneyCompact(todayValue),
+            style: const TextStyle(
+              color: AppTheme.textDark,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Dün: ${_formatMoneyCompact(yesterdayValue)}',
+            style: const TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${isPositive ? '+' : ''}${percentage.toStringAsFixed(1)}%',
+            style: TextStyle(
+              color: percentageColor,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+  final bool thick;
+
+  const _LegendItem({
+    required this.color,
+    required this.label,
+    required this.thick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: thick ? 5 : 3,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(99),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppTheme.textDark,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HourlyGraphPoint {
+  final double hour;
+  final double revenue;
+
+  const _HourlyGraphPoint({
+    required this.hour,
+    required this.revenue,
+  });
+}
+
+class _HourlyRevenueChartPainter extends CustomPainter {
+  final List<_HourlyGraphPoint> todayPoints;
+  final List<_HourlyGraphPoint> yesterdayPoints;
+  final double maxRevenue;
+  final Color todayColor;
+  final Color yesterdayColor;
+  final int? hoveredCompletedHour;
+
+  const _HourlyRevenueChartPainter({
+  required this.todayPoints,
+  required this.yesterdayPoints,
+  required this.maxRevenue,
+  required this.todayColor,
+  required this.yesterdayColor,
+  required this.hoveredCompletedHour,
+});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const double leftPadding = 72;
+    const double rightPadding = 24;
+    const double topPadding = 16;
+    const double bottomPadding = 46;
+
+    final chartRect = Rect.fromLTWH(
+      leftPadding,
+      topPadding,
+      size.width - leftPadding - rightPadding,
+      size.height - topPadding - bottomPadding,
+    );
+
+    final axisPaint = Paint()
+      ..color = AppTheme.textMuted.withOpacity(0.35)
+      ..strokeWidth = 1.2;
+
+    final gridPaint = Paint()
+      ..color = AppTheme.textMuted.withOpacity(0.12)
+      ..strokeWidth = 1;
+
+    // background grid horizontal
+    for (int i = 0; i <= 4; i++) {
+      final y = chartRect.bottom - (chartRect.height / 4) * i;
+      final value = (maxRevenue / 4) * i;
+
+      canvas.drawLine(
+        Offset(chartRect.left, y),
+        Offset(chartRect.right, y),
+        gridPaint,
+      );
+
+      _drawText(
+        canvas,
+        _formatMoneyCompact(value),
+        Offset(8, y - 8),
+        AppTheme.textMuted,
+        12,
+      );
+    }
+
+    // background grid vertical
+    for (int hour = 0; hour <= 24; hour += 2) {
+      final x = chartRect.left + (hour / 24.0) * chartRect.width;
+
+      canvas.drawLine(
+        Offset(x, chartRect.top),
+        Offset(x, chartRect.bottom),
+        gridPaint,
+      );
+
+      _drawText(
+        canvas,
+        hour.toString().padLeft(2, '0'),
+        Offset(x - 10, chartRect.bottom + 10),
+        AppTheme.textMuted,
+        12,
+      );
+    }
+
+    // axes
+    canvas.drawLine(
+      Offset(chartRect.left, chartRect.bottom),
+      Offset(chartRect.right, chartRect.bottom),
+      axisPaint,
+    );
+
+    canvas.drawLine(
+      Offset(chartRect.left, chartRect.top),
+      Offset(chartRect.left, chartRect.bottom),
+      axisPaint,
+    );
+
+    _drawFilledAreaUnderLine(
+      canvas: canvas,
+      points: todayPoints,
+      chartRect: chartRect,
+      color: todayColor.withOpacity(0.10),
+    );
+
+    _drawLine(
+      canvas: canvas,
+      points: yesterdayPoints,
+      chartRect: chartRect,
+      color: yesterdayColor,
+      strokeWidth: 3,
+    );
+
+    _drawLine(
+      canvas: canvas,
+      points: todayPoints,
+      chartRect: chartRect,
+      color: todayColor,
+      strokeWidth: 4,
+    );
+
+    _drawMarkers(
+      canvas: canvas,
+      points: yesterdayPoints,
+      chartRect: chartRect,
+      color: yesterdayColor,
+      radius: 3.2,
+    );
+
+    _drawMarkers(
+      canvas: canvas,
+      points: todayPoints,
+      chartRect: chartRect,
+      color: todayColor,
+      radius: 4.0,
+    );
+
+    _drawHoverGuide(
+      canvas: canvas,
+      chartRect: chartRect,
+    );
+  }
+
+  void _drawFilledAreaUnderLine({
+    required Canvas canvas,
+    required List<_HourlyGraphPoint> points,
+    required Rect chartRect,
+    required Color color,
+  }) {
+    if (points.length < 2) return;
+
+    final path = Path();
+    final first = _mapPoint(points.first, chartRect);
+    path.moveTo(first.dx, chartRect.bottom);
+    path.lineTo(first.dx, first.dy);
+
+    for (int i = 1; i < points.length; i++) {
+      final mapped = _mapPoint(points[i], chartRect);
+      path.lineTo(mapped.dx, mapped.dy);
+    }
+
+    final last = _mapPoint(points.last, chartRect);
+    path.lineTo(last.dx, chartRect.bottom);
+    path.close();
+
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawLine({
+    required Canvas canvas,
+    required List<_HourlyGraphPoint> points,
+    required Rect chartRect,
+    required Color color,
+    required double strokeWidth,
+  }) {
+    if (points.length < 2) return;
+
+    final path = Path();
+    final first = _mapPoint(points.first, chartRect);
+    path.moveTo(first.dx, first.dy);
+
+    for (int i = 1; i < points.length; i++) {
+      final mapped = _mapPoint(points[i], chartRect);
+      path.lineTo(mapped.dx, mapped.dy);
+    }
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawMarkers({
+    required Canvas canvas,
+    required List<_HourlyGraphPoint> points,
+    required Rect chartRect,
+    required Color color,
+    required double radius,
+  }) {
+    final fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final strokePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke;
+
+    for (final point in points) {
+      final offset = _mapPoint(point, chartRect);
+      canvas.drawCircle(offset, radius, fillPaint);
+      canvas.drawCircle(offset, radius, strokePaint);
+    }
+  }
+
+  void _drawHoverGuide({
+  required Canvas canvas,
+  required Rect chartRect,
+}) {
+  final hour = hoveredCompletedHour;
+
+  if (hour == null) return;
+
+  final x = chartRect.left + (hour / 24.0) * chartRect.width;
+
+  final guidePaint = Paint()
+    ..color = todayColor.withOpacity(0.35)
+    ..strokeWidth = 2;
+
+  canvas.drawLine(
+    Offset(x, chartRect.top),
+    Offset(x, chartRect.bottom),
+    guidePaint,
+  );
+
+  final todayPoint = _findPointAtHour(todayPoints, hour);
+  final yesterdayPoint = _findPointAtHour(yesterdayPoints, hour);
+
+  if (yesterdayPoint != null) {
+    final offset = _mapPoint(yesterdayPoint, chartRect);
+
+    final paint = Paint()
+      ..color = yesterdayColor
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(offset, 7, paint);
+  }
+
+  if (todayPoint != null) {
+    final offset = _mapPoint(todayPoint, chartRect);
+
+    final paint = Paint()
+      ..color = todayColor
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(offset, 8, paint);
+  }
+}
+
+_HourlyGraphPoint? _findPointAtHour(
+  List<_HourlyGraphPoint> points,
+  int hour,
+) {
+  for (final point in points) {
+    if ((point.hour - hour).abs() < 0.001) {
+      return point;
+    }
+  }
+
+  return null;
+}
+
+  Offset _mapPoint(_HourlyGraphPoint point, Rect chartRect) {
+    final double safeMax = maxRevenue <= 0 ? 1.0 : maxRevenue;
+
+    final double x =
+        chartRect.left + (point.hour / 24.0) * chartRect.width;
+
+    final double normalizedRevenue =
+        ((point.revenue / safeMax).clamp(0.0, 1.0)).toDouble();
+
+    final double y =
+        chartRect.bottom - (normalizedRevenue * chartRect.height);
+
+    return Offset(x, y);
+  }
+
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    Color color,
+    double fontSize,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    painter.layout();
+    painter.paint(canvas, offset);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HourlyRevenueChartPainter oldDelegate) {
+    return true;
+  }
+}
+
+String _formatHourMinute(DateTime date) {
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
+String _formatMoneyCompact(double value) {
+  if (value >= 1000000) {
+    return '${(value / 1000000).toStringAsFixed(1)}M ₺';
+  }
+
+  if (value >= 1000) {
+    return '${(value / 1000).toStringAsFixed(1)}K ₺';
+  }
+
+  return '${value.toStringAsFixed(0)} ₺';
+}
+
+class _GraphLegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _GraphLegendDot({
+    required this.color,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniGraphInfoCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final double percentage;
+
+  const _MiniGraphInfoCard({
+    required this.title,
+    required this.value,
+    required this.percentage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool positive = percentage >= 0;
+    final Color color = positive ? Colors.green : Colors.red;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppTheme.textMuted.withOpacity(0.10),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textMuted,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${positive ? '+' : ''}${percentage.toStringAsFixed(1)}%',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HourlyHoverInfo {
+  final int completedHour;
+  final double todayValue;
+  final double yesterdayValue;
+  final double differenceAmount;
+  final double percentage;
+
+  const _HourlyHoverInfo({
+    required this.completedHour,
+    required this.todayValue,
+    required this.yesterdayValue,
+    required this.differenceAmount,
+    required this.percentage,
+  });
+}
+
+class _HourlyHoverTooltip extends StatelessWidget {
+  final _HourlyHoverInfo info;
+
+  const _HourlyHoverTooltip({
+    required this.info,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final positive = info.percentage >= 0;
+    final color = positive ? Colors.green : Colors.red;
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
+      child: Container(
+        width: 255,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: color.withOpacity(0.35),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.textDark.withOpacity(0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '00:00 - ${info.completedHour.toString().padLeft(2, '0')}:00',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _tooltipLine(
+              label: 'Bugün',
+              value: _formatMoneyLarge(info.todayValue),
+            ),
+            _tooltipLine(
+              label: 'Dün',
+              value: _formatMoneyLarge(info.yesterdayValue),
+            ),
+            const Divider(height: 18),
+            _tooltipLine(
+              label: 'Fark',
+              value: _formatMoneyLarge(info.differenceAmount),
+              valueColor: color,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${positive ? '+' : ''}${info.percentage.toStringAsFixed(1)}%',
+              style: TextStyle(
+                color: color,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tooltipLine({
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 58,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.textMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: valueColor ?? AppTheme.textDark,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatMoneyLarge(double value) {
+  return '${value.toStringAsFixed(0)} ₺';
+}
+
+String _formatFullDateTime(DateTime date) {
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  final year = date.year.toString();
+  final hour = date.hour.toString().padLeft(2, '0');
+  final minute = date.minute.toString().padLeft(2, '0');
+  final second = date.second.toString().padLeft(2, '0');
+
+  return '$day.$month.$year $hour:$minute:$second';
 }
 
 // --------------------------------------------------------------------
