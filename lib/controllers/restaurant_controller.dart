@@ -433,6 +433,8 @@ String _paymentMethodToDatabaseValue(PaymentMethod method) {
       return 'cash';
     case PaymentMethod.creditCard:
       return 'credit_card';
+    case PaymentMethod.discount:
+      return 'discount';
   }
 }
 
@@ -571,6 +573,7 @@ void _closeSessionIfAdmin(TableModel table) {
   final totalPaid = table.totalPaid;
   final cashPaid = table.totalCashPaid;
   final cardPaid = table.totalCardPaid;
+  final discountAmount = table.totalDiscount;
 
   unawaited(() async {
     try {
@@ -595,6 +598,7 @@ void _closeSessionIfAdmin(TableModel table) {
         totalPaid: totalPaid,
         cashPaid: cashPaid,
         cardPaid: cardPaid,
+        discountAmount: discountAmount,
       );
     } catch (e) {
       LoggerService.instance.error('Error closing table session: $e');

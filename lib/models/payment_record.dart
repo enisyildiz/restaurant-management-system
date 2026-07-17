@@ -1,6 +1,7 @@
 enum PaymentMethod {
   cash,
   creditCard,
+  discount,
 }
 
 class PaymentRecord {
@@ -41,6 +42,8 @@ extension PaymentMethodLabel on PaymentMethod {
         return 'Cash';
       case PaymentMethod.creditCard:
         return 'Credit Card';
+      case PaymentMethod.discount:
+        return 'Discount';
     }
   }
 }

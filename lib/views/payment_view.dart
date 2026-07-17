@@ -138,15 +138,37 @@ class _PaymentViewState extends State<PaymentView> {
                                   itemBuilder: (context, index) {
                                     final p = widget.controller.tables.firstWhere((t) => t.id == widget.tableId).payments[index];
                                     final isCash = p.method == PaymentMethod.cash;
+                                    final isDiscount = p.method == PaymentMethod.discount;
                                     return ListTile(
                                       contentPadding: EdgeInsets.zero,
-                                      leading: Icon(isCash ? Icons.money : Icons.credit_card, color: isCash ? AppTheme.pastelGreen : AppTheme.pastelBlue),
+                                      leading: Icon(
+                                        isDiscount ? Icons.discount : (isCash ? Icons.money : Icons.credit_card),
+                                        color: isDiscount ? Colors.orange.shade300 : (isCash ? AppTheme.pastelGreen : AppTheme.pastelBlue)
+                                      ),
                                       title: Text('${p.amount.toStringAsFixed(2)} ₺', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                      subtitle: Text(isCash ? 'Nakit' : 'Kredi Kartı'),
+                                      subtitle: Text(isDiscount ? 'İndirim' : (isCash ? 'Nakit' : 'Kredi Kartı')),
                                     );
                                   },
                                 ),
                         ),
+                        if (widget.controller.currentUser?.role.name == 'admin') ...[
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 50,
+                            child: ElevatedButton.icon(
+                              icon: const Icon(Icons.discount, color: AppTheme.textDark),
+                              label: const Text('İndirim Gir', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange.shade200,
+                                foregroundColor: AppTheme.textDark,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              onPressed: () {
+                                _showDiscountDialog(context);
+                              },
+                            ),
+                          ),
+                        ]
                       ],
                     ),
                   ),
@@ -331,26 +353,139 @@ class _PaymentViewState extends State<PaymentView> {
     );
   }
 
-  Widget _buildActionBtn(String label, IconData icon, Color color, VoidCallback onPressed) {
+  Widget _buildActionBtn(String label, IconData icon, Color color, VoidCallback onTap) {
     return SizedBox(
-      height: 70,
+      height: 80,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: AppTheme.textDark,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 2,
         ),
-        onPressed: onPressed,
-        child: Row(
+        onPressed: onTap,
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 28),
-            const SizedBox(width: 12),
-            Text(label, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ],
         ),
       ),
+    );
+  }
+
+  void _showDiscountDialog(BuildContext context) {
+    String discountInput = '0';
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            void onKeyPress(String key) {
+              setStateDialog(() {
+                if (key == 'C') {
+                  discountInput = '0';
+                } else if (key == '⌫') {
+                  if (discountInput.length <= 1) {
+                    discountInput = '0';
+                  } else {
+                    discountInput = discountInput.substring(0, discountInput.length - 1);
+                  }
+                } else {
+                  if (discountInput == '0') {
+                    if (key != '0') discountInput = key;
+                  } else {
+                    discountInput += key;
+                  }
+                }
+              });
+            }
+
+            return AlertDialog(
+              backgroundColor: AppTheme.surfaceLight,
+              title: const Text('İndirim Gir'),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.background,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        '$discountInput ₺',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    GridView.count(
+                      crossAxisCount: 3,
+                      shrinkWrap: true,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      childAspectRatio: 1.5,
+                      children: [
+                        for (var i = 1; i <= 9; i++)
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.background, foregroundColor: AppTheme.textDark),
+                            onPressed: () => onKeyPress(i.toString()),
+                            child: Text(i.toString(), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                          ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelRed, foregroundColor: AppTheme.textDark),
+                          onPressed: () => onKeyPress('C'),
+                          child: const Text('C', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.background, foregroundColor: AppTheme.textDark),
+                          onPressed: () => onKeyPress('0'),
+                          child: const Text('0', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelRed, foregroundColor: AppTheme.textDark),
+                          onPressed: () => onKeyPress('⌫'),
+                          child: const Icon(Icons.backspace),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('İptal'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelGreen, foregroundColor: AppTheme.textDark),
+                  onPressed: () {
+                    final val = double.tryParse(discountInput) ?? 0;
+                    if (val > 0) {
+                      widget.controller.addPaymentToTable(
+                        tableId: widget.tableId,
+                        amount: val,
+                        method: PaymentMethod.discount,
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('$val ₺ indirim uygulandı.'), backgroundColor: AppTheme.pastelGreen,),
+                      );
+                    }
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Uygula', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

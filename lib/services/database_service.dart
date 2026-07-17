@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/table_model.dart';
 
 class DatabaseService {
+  static const int _databaseVersion = 5;
   static final DatabaseService instance = DatabaseService._init();
   Database? _database;
 
@@ -34,7 +35,7 @@ class DatabaseService {
     return await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: _databaseVersion,
         onCreate: _createDB,
         onUpgrade: _upgradeDB,
       ),
@@ -54,6 +55,7 @@ class DatabaseService {
         total_paid REAL NOT NULL,
         cash_paid REAL NOT NULL,
         card_paid REAL NOT NULL,
+        discount_amount REAL NOT NULL DEFAULT 0,
         date_closed TEXT NOT NULL
       )
 ''');
@@ -62,6 +64,7 @@ class DatabaseService {
 CREATE TABLE receipt_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   receipt_id INTEGER NOT NULL,
+  session_id INTEGER,
   product_id TEXT NOT NULL,
   product_name TEXT NOT NULL,
   product_category TEXT NOT NULL,
@@ -91,7 +94,8 @@ Future<void> _createAnalyticsTables(Database db) async {
         total_ordered REAL NOT NULL DEFAULT 0,
         total_paid REAL NOT NULL DEFAULT 0,
         cash_paid REAL NOT NULL DEFAULT 0,
-        card_paid REAL NOT NULL DEFAULT 0
+        card_paid REAL NOT NULL DEFAULT 0,
+        discount_amount REAL NOT NULL DEFAULT 0
       )
       ''');
 
@@ -196,6 +200,12 @@ Future<void> _createAnalyticsTables(Database db) async {
     if (oldVersion < 4) {
       await db.execute('ALTER TABLE receipts ADD COLUMN session_id INTEGER;');
     }
+    
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE receipts ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0;');
+      await db.execute('ALTER TABLE table_sessions ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0;');
+      await db.execute('ALTER TABLE receipt_items ADD COLUMN session_id INTEGER;');
+    }
   }
 
   Future<void> saveClosedTable(TableModel table) async {
@@ -206,6 +216,7 @@ Future<void> _createAnalyticsTables(Database db) async {
     final double totalPaid = table.totalPaid;
     final double cashPaid = table.totalCashPaid;
     final double cardPaid = table.totalCardPaid;
+    final double discountAmount = table.totalDiscount;
     final int tableId = table.id;
     final int? sessionId = table.activeSessionId;
     final String tableCode = table.code;
@@ -232,6 +243,7 @@ Future<void> _createAnalyticsTables(Database db) async {
       'total_paid': totalPaid,
       'cash_paid': cashPaid,
       'card_paid': cardPaid,
+      'discount_amount': discountAmount,
       'date_closed': DateTime.now().toIso8601String(),
     });
 
@@ -289,6 +301,7 @@ Future<void> _createAnalyticsTables(Database db) async {
     required double totalPaid,
     required double cashPaid,
     required double cardPaid,
+    required double discountAmount,
   }) async {
     final db = await instance.database;
 
@@ -301,6 +314,7 @@ Future<void> _createAnalyticsTables(Database db) async {
         'total_paid': totalPaid,
         'cash_paid': cashPaid,
         'card_paid': cardPaid,
+        'discount_amount': discountAmount,
       },
       where: 'id = ?',
       whereArgs: [sessionId],

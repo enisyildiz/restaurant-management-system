@@ -66,6 +66,10 @@ class TableModel {
         .where((p) => p.method == PaymentMethod.creditCard) // Sende enum adı neyse
         .fold(0.0, (sum, p) => sum + p.amount);
 
+  double get totalDiscount => payments
+        .where((p) => p.method == PaymentMethod.discount)
+        .fold(0.0, (sum, p) => sum + p.amount);
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
