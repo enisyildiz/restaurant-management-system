@@ -17,7 +17,6 @@ class _MenuManagementViewState extends State<MenuManagementView> {
   late List<String> _tempCategories;
   
   final ScrollController _productScrollController = ScrollController();
-  final ScrollController _categoryScrollController = ScrollController();
 
   @override
   void initState() {
@@ -435,52 +434,53 @@ class _MenuManagementViewState extends State<MenuManagementView> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: AppTheme.textMuted.withOpacity(0.1)),
             ),
-            child: Scrollbar(
-              controller: _categoryScrollController,
-              thumbVisibility: true,
-              child: SingleChildScrollView(
-                controller: _categoryScrollController,
-                child: SizedBox(
-                  width: double.infinity,
-                  child: DataTable(
-                    headingRowColor: MaterialStateProperty.all(AppTheme.primary.withOpacity(0.1)),
-                    columns: const [
-                      DataColumn(label: Text('Kategori Adı', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('Ürün Sayısı', style: TextStyle(fontWeight: FontWeight.bold))),
-                      DataColumn(label: Text('İşlemler', style: TextStyle(fontWeight: FontWeight.bold))),
-                    ],
-                    rows: _tempCategories.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final category = entry.value;
-                      final count = _tempMenu.where((p) => p.category == category).length;
-                      return DataRow(
-                        cells: [
-                          DataCell(Text(category)),
-                          DataCell(Text(count.toString())),
-                          DataCell(
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, color: AppTheme.primary),
-                                  onPressed: () => _showCategoryDialog(category: category, index: index),
-                                  tooltip: 'Düzenle',
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: AppTheme.pastelRed),
-                                  onPressed: () => _deleteCategory(index),
-                                  tooltip: 'Sil',
-                                ),
-                              ],
-                            ),
+              child: ReorderableListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: _tempCategories.length,
+                onReorder: (oldIndex, newIndex) {
+                  setState(() {
+                    if (newIndex > oldIndex) {
+                      newIndex -= 1;
+                    }
+                    final item = _tempCategories.removeAt(oldIndex);
+                    _tempCategories.insert(newIndex, item);
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final category = _tempCategories[index];
+                  final count = _tempMenu.where((p) => p.category == category).length;
+                  return Card(
+                    key: ValueKey(category),
+                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: AppTheme.primary.withOpacity(0.2),
+                        foregroundColor: AppTheme.primary,
+                        child: Text('${index + 1}'),
+                      ),
+                      title: Text(category, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text('Ürün Sayısı: $count'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: AppTheme.primary),
+                            onPressed: () => _showCategoryDialog(category: category, index: index),
+                            tooltip: 'Düzenle',
                           ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: AppTheme.pastelRed),
+                            onPressed: () => _deleteCategory(index),
+                            tooltip: 'Sil',
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.drag_handle, color: Colors.grey),
                         ],
-                      );
-                    }).toList(),
-                  ),
-                ),
+                      ),
+                    ),
+                  );
+                },
               ),
-            ),
           ),
         ),
       ],
