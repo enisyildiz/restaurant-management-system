@@ -201,7 +201,7 @@ class RestaurantController extends ChangeNotifier {
       if (await configFile.exists()) {
         response = await configFile.readAsString();
       } else {
-        response = await rootBundle.loadString('assets/tables.json');
+        response = '[]';
         
         final Directory appDocDirFolder = Directory(p.dirname(configPath));
         if (!await appDocDirFolder.exists()) {
@@ -259,7 +259,7 @@ class RestaurantController extends ChangeNotifier {
       if (await configFile.exists()) {
         response = await configFile.readAsString();
       } else {
-        response = await rootBundle.loadString('assets/menu.json');
+        response = '[]';
         
         final Directory appDocDirFolder = Directory(p.dirname(configPath));
         if (!await appDocDirFolder.exists()) {
