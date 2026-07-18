@@ -33,6 +33,7 @@ dependencies:
 
   sqflite: 2.2.6
   sqflite_common_ffi: 2.2.4
+  sqlite3_flutter_libs: any
   path: any
   pdf: 3.8.4
   printing: 5.9.3
