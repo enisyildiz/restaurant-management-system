@@ -34,28 +34,25 @@ class TableModel {
       customPrices = customPrices ?? {};
 
   List<OrderItem> get orders {
-    final Map<int, OrderItem> map = {};
+    final List<OrderItem> list = [];
     for (final group in orderGroups) {
       for (final item in group.items) {
-        if (map.containsKey(item.product.id)) {
-          map[item.product.id]!.quantity += item.quantity;
-        } else {
-          final effectivePrice = customPrices[item.product.id] ?? item.product.price;
-          final effectiveProduct = Product(
-            id: item.product.id,
-            name: item.product.name,
-            price: effectivePrice,
-            category: item.product.category,
-          );
-          map[item.product.id] = OrderItem(
-            product: effectiveProduct,
-            quantity: item.quantity,
-            orderTime: item.orderTime,
-          );
-        }
+        final effectivePrice = customPrices[item.product.id] ?? item.product.price;
+        final effectiveProduct = Product(
+          id: item.product.id,
+          name: item.product.name,
+          price: effectivePrice,
+          category: item.product.category,
+        );
+        list.add(OrderItem(
+          id: item.id,
+          product: effectiveProduct,
+          quantity: item.quantity,
+          orderTime: item.orderTime,
+        ));
       }
     }
-    return map.values.toList();
+    return list;
   }
 
   double get currentTotal {

@@ -118,35 +118,38 @@ class _GeneralStatsPage extends StatelessWidget {
         final activeOrderAmount = activeTables.fold(0.0, (sum, t) => sum + t.currentTotal);
         final emptyTablesCount = controller.tables.length - activeTables.length;
 
-        return Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Anlık Restoran Durumu',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Aşağıdaki veriler şu an restoranda oturan aktif masaları göstermektedir.',
-                style: TextStyle(fontSize: 16, color: AppTheme.textMuted),
-              ),
-              const SizedBox(height: 32),
-              Row(
-                children: [
-                  _buildStatCard('Aktif Masa', activeTables.length.toString(), Icons.table_restaurant, AppTheme.pastelBlue),
-                  const SizedBox(width: 24),
-                  _buildStatCard('Boş Masa', emptyTablesCount.toString(), Icons.event_seat, AppTheme.pastelGreen),
-                  const SizedBox(width: 24),
-                  _buildStatCard('Açık Sipariş Toplamı', '${activeOrderAmount.toStringAsFixed(2)} ₺', Icons.receipt_long, AppTheme.pastelYellow),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const Expanded(
-                child: _LiveHourlyComparisonGraph(),
-),
-            ],
+        return SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Anlık Restoran Durumu',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.textDark),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Aşağıdaki veriler şu an restoranda oturan aktif masaları göstermektedir.',
+                  style: TextStyle(fontSize: 16, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  children: [
+                    _buildStatCard('Aktif Masa', activeTables.length.toString(), Icons.table_restaurant, AppTheme.pastelBlue),
+                    const SizedBox(width: 24),
+                    _buildStatCard('Boş Masa', emptyTablesCount.toString(), Icons.event_seat, AppTheme.pastelGreen),
+                    const SizedBox(width: 24),
+                    _buildStatCard('Açık Sipariş Toplamı', '${activeOrderAmount.toStringAsFixed(2)} ₺', Icons.receipt_long, AppTheme.pastelYellow),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const SizedBox(
+                  height: 600,
+                  child: _LiveHourlyComparisonGraph(),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -488,10 +491,14 @@ Widget build(BuildContext context) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Wrap(
+          spacing: 24,
+          runSpacing: 24,
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.start,
           children: [
-            Expanded(
+            Container(
+              constraints: const BoxConstraints(minWidth: 280),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -510,13 +517,17 @@ Widget build(BuildContext context) {
                     spacing: 14,
                     runSpacing: 10,
                     children: [
-                      Text(
-                        _formatMoneyLarge(todayTotal),
-                        style: const TextStyle(
-                          fontSize: 54,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textDark,
-                          height: 1.0,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _formatMoneyLarge(todayTotal),
+                          style: const TextStyle(
+                            fontSize: 54,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textDark,
+                            height: 1.0,
+                          ),
                         ),
                       ),
                       Container(
@@ -577,7 +588,6 @@ Widget build(BuildContext context) {
                 ],
               ),
             ),
-            const SizedBox(width: 24),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -594,7 +604,7 @@ Widget build(BuildContext context) {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _GraphLegendDot(color: todayColor, label: 'Bugün'),
-                    SizedBox(width: 18),
+                    const SizedBox(width: 18),
                     _GraphLegendDot(color: yesterdayColor, label: 'Dün'),
                   ],
                 ),
@@ -605,26 +615,51 @@ Widget build(BuildContext context) {
 
         const SizedBox(height: 22),
 
-        Row(
-          children: [
-            Expanded(
-              child: _MiniGraphInfoCard(
-                title: 'Tamamlanan Saatler',
-                value:
-                    '${_formatMoneyLarge(todayCompleted)} / Dün: ${_formatMoneyLarge(yesterdayCompleted)}',
-                percentage: completedDifference,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: _MiniGraphInfoCard(
-                title: 'Bu Saat',
-                value:
-                    '${_formatMoneyLarge(todayCurrentHour)} / Dün: ${_formatMoneyLarge(yesterdayCurrentHour)}',
-                percentage: currentHourDifference,
-              ),
-            ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isNarrow = constraints.maxWidth < 500;
+            if (isNarrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _MiniGraphInfoCard(
+                    title: 'Tamamlanan Saatler',
+                    value:
+                        '${_formatMoneyLarge(todayCompleted)} / Dün: ${_formatMoneyLarge(yesterdayCompleted)}',
+                    percentage: completedDifference,
+                  ),
+                  const SizedBox(height: 14),
+                  _MiniGraphInfoCard(
+                    title: 'Bu Saat',
+                    value:
+                        '${_formatMoneyLarge(todayCurrentHour)} / Dün: ${_formatMoneyLarge(yesterdayCurrentHour)}',
+                    percentage: currentHourDifference,
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(
+                  child: _MiniGraphInfoCard(
+                    title: 'Tamamlanan Saatler',
+                    value:
+                        '${_formatMoneyLarge(todayCompleted)} / Dün: ${_formatMoneyLarge(yesterdayCompleted)}',
+                    percentage: completedDifference,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: _MiniGraphInfoCard(
+                    title: 'Bu Saat',
+                    value:
+                        '${_formatMoneyLarge(todayCurrentHour)} / Dün: ${_formatMoneyLarge(yesterdayCurrentHour)}',
+                    percentage: currentHourDifference,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
 
         const SizedBox(height: 24),

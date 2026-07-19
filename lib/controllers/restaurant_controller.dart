@@ -98,6 +98,7 @@ class RestaurantController extends ChangeNotifier {
         'menu': _menu.map((p) => p.toJson()).toList(),
         'categories': editableCategories,
       });
+    } else if (action == 'full_state') {
       if (data.containsKey('tables')) {
         final remoteTablesData = data['tables'] as List<dynamic>;
         final remoteTables = remoteTablesData.map((e) => TableModel.fromJson(e)).toList();
@@ -149,11 +150,11 @@ class RestaurantController extends ChangeNotifier {
       notifyListeners();
       _showSnackbar('Masalar sunucudan güncellendi.', false);
     } else if (action == 'add_product') {
-      addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
+      addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true, orderItemId: data['orderItemId']);
     } else if (action == 'remove_product') {
-      removeProductFromTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true);
+      removeProductFromTable(data['tableId'], data['orderItemId'], fromNetwork: true);
     } else if (action == 'set_product_quantity') {
-      setProductQuantity(data['tableId'], Product.fromJson(data['product']), (data['quantity'] as num).toDouble(), fromNetwork: true);
+      setProductQuantity(data['tableId'], data['orderItemId'], (data['quantity'] as num).toDouble(), fromNetwork: true);
     } else if (action == 'checkout_table') {
         checkoutTable(data['tableId'], fromNetwork: true);
     } else if (action == 'move_table') {
@@ -201,7 +202,7 @@ class RestaurantController extends ChangeNotifier {
         });
       }
       
-      saveTables(tables);
+      _saveTablesSilent();
     }
   }
 
@@ -267,6 +268,18 @@ class RestaurantController extends ChangeNotifier {
       _showSnackbar('Masalar başarıyla kaydedildi.', false);
     } catch (e) {
       _showSnackbar('Masalar kaydedilirken hata oluştu: $e', true);
+    }
+  }
+
+  Future<void> _saveTablesSilent() async {
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'tables.json');
+      final File configFile = File(configPath);
+      final String jsonStr = json.encode(tables.map((e) => e.toJson()).toList());
+      await configFile.writeAsString(jsonStr);
+    } catch (e) {
+      LoggerService.instance.error('Error saving tables silently: $e');
     }
   }
 
@@ -640,18 +653,17 @@ void addProductToTable(
   int tableId,
   Product product, {
   bool fromNetwork = false,
+  String? orderItemId,
 }) {
   final table = tables.firstWhere((t) => t.id == tableId);
   final activeGroup = _getOrCreateActiveGroup(table);
-  final existingItemIndex = activeGroup.items.indexWhere(
-    (item) => item.product.id == product.id,
-  );
 
-  if (existingItemIndex >= 0) {
-    activeGroup.items[existingItemIndex].quantity += 1.0;
-  } else {
-    activeGroup.items.add(OrderItem(product: product, orderTime: DateTime.now()));
-  }
+  final newItem = OrderItem(
+    id: orderItemId,
+    product: product,
+    orderTime: DateTime.now(),
+  );
+  activeGroup.items.add(newItem);
 
   table.status = TableStatus.occupied;
   table.seatedAt ??= DateTime.now();
@@ -669,111 +681,100 @@ void addProductToTable(
       'action': 'add_product',
       'tableId': tableId,
       'product': product.toJson(),
+      'orderItemId': newItem.id,
     });
   }
 
   notifyListeners();
+  _saveTablesSilent();
 }
 
 void setProductQuantity(
   int tableId,
-  Product product,
+  String orderItemId,
   double newQuantity, {
   bool fromNetwork = false,
 }) {
+  final table = tables.firstWhere((t) => t.id == tableId);
+  
   if (newQuantity <= 0) {
     if (currentUser?.role.name == 'admin') {
-      removeProductFromTable(tableId, product, fromNetwork: fromNetwork);
+      removeProductFromTable(tableId, orderItemId, fromNetwork: fromNetwork);
       return;
     } else {
       newQuantity = 1.0;
     }
   }
 
-  final table = tables.firstWhere((t) => t.id == tableId);
-  final oldQuantity = table.orders.where((item) => item.product.id == product.id).fold(0.0, (sum, item) => sum + item.quantity);
-  final delta = newQuantity - oldQuantity;
-
-  if (delta == 0) return;
-
-  if (delta > 0) {
-    final activeGroup = _getOrCreateActiveGroup(table);
-    final existingItemIndex = activeGroup.items.indexWhere((item) => item.product.id == product.id);
-    if (existingItemIndex >= 0) {
-      activeGroup.items[existingItemIndex].quantity += delta;
-    } else {
-      activeGroup.items.add(OrderItem(product: product, quantity: delta, orderTime: DateTime.now()));
-    }
-  } else {
-    double amountToRemove = -delta;
-    for (int i = table.orderGroups.length - 1; i >= 0; i--) {
-      if (amountToRemove <= 0) break;
-      final group = table.orderGroups[i];
-      final itemIndex = group.items.indexWhere((item) => item.product.id == product.id);
-      if (itemIndex >= 0) {
-        if (group.items[itemIndex].quantity <= amountToRemove) {
-          amountToRemove -= group.items[itemIndex].quantity;
-          group.items.removeAt(itemIndex);
-        } else {
-          group.items[itemIndex].quantity -= amountToRemove;
-          amountToRemove = 0;
-        }
-      }
-      if (group.items.isEmpty && !group.isPrintedToKitchen) {
-        table.orderGroups.removeAt(i);
-      }
+  OrderItem? targetItem;
+  
+  for (final group in table.orderGroups) {
+    final idx = group.items.indexWhere((item) => item.id == orderItemId);
+    if (idx >= 0) {
+      targetItem = group.items[idx];
+      break;
     }
   }
+
+  if (targetItem == null) return;
+
+  final delta = newQuantity - targetItem.quantity;
+  if (delta == 0) return;
+
+  targetItem.quantity = newQuantity;
 
   table.status = TableStatus.occupied;
   table.seatedAt ??= DateTime.now();
 
   _logOrderEventIfAdmin(
     table: table,
-    product: product,
+    product: targetItem.product,
     eventType: 'quantity_updated',
     quantityDelta: delta,
-    totalPrice: product.price * delta,
+    totalPrice: targetItem.product.price * delta,
   );
 
   if (!fromNetwork && _networkService != null) {
     _networkService!.sendMessage({
       'action': 'set_product_quantity',
       'tableId': tableId,
-      'product': product.toJson(),
+      'orderItemId': orderItemId,
       'quantity': newQuantity,
     });
   }
 
   notifyListeners();
+  _saveTablesSilent();
 }
 
 void removeProductFromTable(
   int tableId,
-  Product product, {
+  String orderItemId, {
   bool fromNetwork = false,
 }) {
   final table = tables.firstWhere((t) => t.id == tableId);
-  final oldQuantity = table.orders.where((item) => item.product.id == product.id).fold(0.0, (sum, item) => sum + item.quantity);
-
-  if (oldQuantity == 0) return;
+  
+  OrderItem? removedItem;
 
   for (int i = table.orderGroups.length - 1; i >= 0; i--) {
     final group = table.orderGroups[i];
-    final itemIndex = group.items.indexWhere((item) => item.product.id == product.id);
+    final itemIndex = group.items.indexWhere((item) => item.id == orderItemId);
     if (itemIndex >= 0) {
-      group.items.removeAt(itemIndex);
+      removedItem = group.items.removeAt(itemIndex);
+      break;
     }
   }
+
+  if (removedItem == null) return;
 
   table.orderGroups.removeWhere((g) => g.items.isEmpty && !g.isPrintedToKitchen);
 
   _logOrderEventIfAdmin(
     table: table,
-    product: product,
+    product: removedItem.product,
     eventType: 'item_removed',
-    quantityDelta: -oldQuantity,
-    totalPrice: -(product.price * oldQuantity),
+    quantityDelta: -removedItem.quantity,
+    totalPrice: -(removedItem.product.price * removedItem.quantity),
   );
 
   if (table.orderGroups.isEmpty || table.orderGroups.every((g) => g.items.isEmpty)) {
@@ -787,11 +788,12 @@ void removeProductFromTable(
     _networkService!.sendMessage({
       'action': 'remove_product',
       'tableId': tableId,
-      'product': product.toJson(),
+      'orderItemId': orderItemId,
     });
   }
 
   notifyListeners();
+  _saveTablesSilent();
 }
 
   void checkoutTable(int tableId, {bool fromNetwork = false}) {
@@ -807,6 +809,7 @@ void removeProductFromTable(
 
     table.orderGroups.clear();
     table.payments.clear();
+    table.customPrices.clear();
     table.status = TableStatus.empty;
 
     table.activeSessionId = null;
@@ -819,12 +822,14 @@ void removeProductFromTable(
       });
     }
     notifyListeners();
+    _saveTablesSilent();
   }
 
   void saveTable(int tableId) {
     final table = tables.firstWhere((t) => t.id == tableId);
     table.status = TableStatus.occupied;
     notifyListeners();
+    _saveTablesSilent();
   }
 
   Future<void> printReceipt(int tableId, PrintTarget target) async {
@@ -911,6 +916,7 @@ void removeProductFromTable(
     }
 
     notifyListeners();
+    _saveTablesSilent();
   }
 
   void _showSnackbar(String message, bool isFailed) {
@@ -980,6 +986,7 @@ void removeProductFromTable(
 
   targetTable.orderGroups.addAll(currentTable.orderGroups);
   targetTable.payments.addAll(currentTable.payments);
+  targetTable.customPrices.addAll(currentTable.customPrices);
 
   // Preserve the current table status instead of always forcing occupied.
   targetTable.status = currentTable.status;
@@ -1001,6 +1008,7 @@ void removeProductFromTable(
 
   currentTable.orderGroups.clear();
   currentTable.payments.clear();
+  currentTable.customPrices.clear();
   currentTable.status = TableStatus.empty;
   currentTable.activeSessionId = null;
   currentTable.seatedAt = null;
@@ -1015,6 +1023,7 @@ void removeProductFromTable(
   }
 
   notifyListeners();
+  _saveTablesSilent();
 }
 
   List<OrderItem> ordersForTable(int tableId) {
@@ -1138,5 +1147,6 @@ void removeProductFromTable(
     } else {
       notifyListeners();
     }
+    _saveTablesSilent();
   }
 }

@@ -468,16 +468,64 @@ class _PaymentViewState extends State<PaymentView> {
                   onPressed: () {
                     final val = double.tryParse(discountInput) ?? 0;
                     if (val > 0) {
+                      final table = widget.controller.tables.firstWhere((t) => t.id == widget.tableId);
+                      final remaining = table.remainingAmount;
+
+                      if (val > remaining) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Hata: İndirim miktarı kalan tutardan fazla olamaz!'),
+                            backgroundColor: AppTheme.pastelRed,
+                          ),
+                        );
+                        return;
+                      }
+
+                      if (val == remaining) {
+                        showDialog(
+                          context: context,
+                          builder: (context2) => AlertDialog(
+                            title: const Text('Tüm Hesaba İndirim'),
+                            content: const Text('Emin misiniz? Geri kalan tüm tutarı indirim olarak girdiğiniz için masa tamamen kapatılacaktır.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context2),
+                                child: const Text('Hayır', style: TextStyle(color: AppTheme.textDark)),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelGreen, foregroundColor: AppTheme.textDark),
+                                onPressed: () {
+                                  Navigator.pop(context2);
+                                  Navigator.pop(context);
+                                  widget.controller.addPaymentToTable(
+                                    tableId: widget.tableId,
+                                    amount: val,
+                                    method: PaymentMethod.discount,
+                                  );
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('$val ₺ indirim uygulandı.'), backgroundColor: AppTheme.pastelGreen),
+                                  );
+                                },
+                                child: const Text('Evet'),
+                              ),
+                            ],
+                          ),
+                        );
+                        return;
+                      }
+
                       widget.controller.addPaymentToTable(
                         tableId: widget.tableId,
                         amount: val,
                         method: PaymentMethod.discount,
                       );
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('$val ₺ indirim uygulandı.'), backgroundColor: AppTheme.pastelGreen,),
+                        SnackBar(content: Text('$val ₺ indirim uygulandı.'), backgroundColor: AppTheme.pastelGreen),
                       );
+                      Navigator.pop(context);
+                    } else {
+                      Navigator.pop(context);
                     }
-                    Navigator.pop(context);
                   },
                   child: const Text('Uygula', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),

@@ -3,6 +3,7 @@ import '../controllers/restaurant_controller.dart';
 import '../models/table_model.dart';
 import '../theme/theme.dart';
 import '../models/product.dart';
+import '../models/order_item.dart';
 import 'payment_view.dart';
 
 class OrderView extends StatelessWidget {
@@ -13,10 +14,12 @@ class OrderView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final table = controller.tables.firstWhere((t) => t.id == tableId);
+    
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: Text('Sipariş Ekranı - Masa $tableId', style: const TextStyle(color: AppTheme.textDark)),
+        title: Text('Sipariş Ekranı - ${table.name}', style: const TextStyle(color: AppTheme.textDark)),
         backgroundColor: Colors.white,
         iconTheme: const IconThemeData(color: AppTheme.textDark),
         elevation: 0,
@@ -141,7 +144,7 @@ class OrderView extends StatelessWidget {
                                 itemBuilder: (context, index) {
                                   final orderItem = table.orders[index];
                                   return InkWell(
-                                    onTap: () => _showNumpadDialog(context, controller, tableId, orderItem.product, orderItem.quantity),
+                                    onTap: () => _showNumpadDialog(context, controller, tableId, orderItem),
                                     child: ListTile(
                                       title: Text(orderItem.product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                                       subtitle: Text('${orderItem.product.price} ₺ x ${_formatQuantity(orderItem.quantity)}'),
@@ -165,7 +168,7 @@ class OrderView extends StatelessWidget {
                                                         ),
                                                         TextButton(
                                                           onPressed: () {
-                                                            controller.removeProductFromTable(tableId, orderItem.product);
+                                                            controller.removeProductFromTable(tableId, orderItem.id);
                                                             Navigator.of(context).pop();
                                                           },
                                                           child: const Text('Evet, Sil', style: TextStyle(color: AppTheme.pastelRed, fontWeight: FontWeight.bold)),
@@ -385,8 +388,8 @@ class OrderView extends StatelessWidget {
     return q == q.truncateToDouble() ? q.toInt().toString() : q.toString();
   }
 
-  void _showNumpadDialog(BuildContext context, RestaurantController controller, int tableId, Product product, double currentQuantity) {
-    String inputValue = _formatQuantity(currentQuantity);
+  void _showNumpadDialog(BuildContext context, RestaurantController controller, int tableId, OrderItem orderItem) {
+    String inputValue = _formatQuantity(orderItem.quantity);
 
     showDialog(
       context: context,
@@ -439,7 +442,7 @@ class OrderView extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(product.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text(orderItem.product.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
                     Container(
                       width: double.infinity,
@@ -459,7 +462,8 @@ class OrderView extends StatelessWidget {
                     Row(children: [buildBtn('7'), buildBtn('8'), buildBtn('9')]),
                     Row(children: [buildBtn('4'), buildBtn('5'), buildBtn('6')]),
                     Row(children: [buildBtn('1'), buildBtn('2'), buildBtn('3')]),
-                    Row(children: [buildBtn('.'), buildBtn('0'), buildBtn('DEL', color: AppTheme.pastelRed)]),
+                    Row(children: [buildBtn('C', color: AppTheme.pastelRed), buildBtn('0'), buildBtn('.')]),
+                    Row(children: [buildBtn('DEL', color: AppTheme.pastelRed)]),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -486,7 +490,7 @@ class OrderView extends StatelessWidget {
                             ),
                             onPressed: () {
                               final newQ = double.tryParse(inputValue) ?? 0.0;
-                              controller.setProductQuantity(tableId, product, newQ);
+                              controller.setProductQuantity(tableId, orderItem.id, newQ);
                               Navigator.pop(context);
                             },
                             child: const Text('Onayla', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -578,7 +582,8 @@ class OrderView extends StatelessWidget {
                     Row(children: [buildBtn('7'), buildBtn('8'), buildBtn('9')]),
                     Row(children: [buildBtn('4'), buildBtn('5'), buildBtn('6')]),
                     Row(children: [buildBtn('1'), buildBtn('2'), buildBtn('3')]),
-                    Row(children: [buildBtn('.'), buildBtn('0'), buildBtn('DEL', color: AppTheme.pastelRed)]),
+                    Row(children: [buildBtn('C', color: AppTheme.pastelRed), buildBtn('0'), buildBtn('.')]),
+                    Row(children: [buildBtn('DEL', color: AppTheme.pastelRed)]),
                     const SizedBox(height: 16),
                     Row(
                       children: [

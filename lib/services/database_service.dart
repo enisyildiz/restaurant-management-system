@@ -750,7 +750,6 @@ Future<List<Map<String, dynamic>>> getReceiptsWithSessionInfo({
       FROM order_events
       WHERE created_at >= ?
         AND created_at < ?
-        AND event_type IN ('order_added', 'item_removed')
       ''',
       [
         start.toIso8601String(),
@@ -886,7 +885,6 @@ Future<List<double>> getHourlyBusinessRevenueForDate(DateTime date) async {
     FROM order_events
     WHERE created_at >= ?
       AND created_at < ?
-      AND event_type IN ('order_added', 'item_removed')
     GROUP BY CAST(substr(created_at, 12, 2) AS INTEGER)
     ORDER BY hour ASC
     ''',
