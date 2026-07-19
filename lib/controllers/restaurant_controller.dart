@@ -857,9 +857,11 @@ void removeProductFromTable(
     }
 
     try {
-      selectedPrinter = printers.firstWhere((p) => p.name == targetPrinterName);
+      selectedPrinter = printers.firstWhere(
+        (p) => p.name.toUpperCase().contains(targetPrinterName.toUpperCase()),
+      );
     } catch (e) {
-      _showSnackbar('HATA: Yazıcı $targetPrinterName sistemde bulunamadı!', true);
+      _showSnackbar('HATA: Yazıcı "$targetPrinterName" sistemde bulunamadı!', true);
       return; 
     }
 
