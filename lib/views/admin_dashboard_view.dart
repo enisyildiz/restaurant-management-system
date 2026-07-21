@@ -3001,30 +3001,1039 @@ String _formatPaymentInfo(Map<String, dynamic> item) {
 // --------------------------------------------------------------------
 // HAFTALIK SATIŞ VERİLERİ SAYFASI
 // --------------------------------------------------------------------
-class _WeeklySalesDataPage extends StatelessWidget {
+class _WeeklySalesDataPage extends StatefulWidget {
   const _WeeklySalesDataPage();
 
   @override
+  State<_WeeklySalesDataPage> createState() => _WeeklySalesDataPageState();
+}
+
+class _WeeklySalesDataPageState extends State<_WeeklySalesDataPage> {
+  Timer? _timer;
+
+  bool isLoading = true;
+  DateTime weekStart = DateTime.now();
+  DateTime weekEnd = DateTime.now();
+  DateTime lastUpdated = DateTime.now();
+
+  List<_DailyMetricPoint> weeklyRevenue = [];
+  List<_DailyMetricPoint> averageTableOrder = [];
+  List<Map<String, dynamic>> weeklyProductSales = [];
+  List<Map<String, dynamic>> weeklyCategoryRevenue = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWeeklyData();
+
+    _timer = Timer.periodic(const Duration(hours: 3), (_) {
+      _loadWeeklyData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  DateTime _startOfLast7Days(DateTime date) {
+    final todayStart = DateTime(date.year, date.month, date.day);
+    return todayStart.subtract(const Duration(days: 6));
+  }
+
+  String _dateKey(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  String _weekdayShort(int weekday) {
+    switch (weekday) {
+      case 1:
+        return 'Pzt';
+      case 2:
+        return 'Sal';
+      case 3:
+        return 'Çar';
+      case 4:
+        return 'Per';
+      case 5:
+        return 'Cum';
+      case 6:
+        return 'Cmt';
+      case 7:
+        return 'Paz';
+      default:
+        return '-';
+    }
+  }
+
+  List<_DailyMetricPoint> _buildDailyPoints({
+    required DateTime start,
+    required List<Map<String, dynamic>> rows,
+    required String valueKey,
+  }) {
+    final valuesByDay = <String, double>{};
+
+    for (final row in rows) {
+      final day = row['day']?.toString();
+      if (day == null) continue;
+
+      valuesByDay[day] = _toDouble(row[valueKey]);
+    }
+
+    return List.generate(7, (index) {
+      final date = start.add(Duration(days: index));
+      final key = _dateKey(date);
+
+      return _DailyMetricPoint(
+        label: _weekdayShort(date.weekday),
+        dateLabel:
+            '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}',
+        value: valuesByDay[key] ?? 0,
+      );
+    });
+  }
+
+  Future<void> _loadWeeklyData() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    final now = DateTime.now();
+    final start = _startOfLast7Days(now);
+    final end = DateTime(now.year, now.month, now.day).add(
+      const Duration(days: 1),
+    );
+
+    final revenueRows =
+        await DatabaseService.instance.getDailyBusinessRevenueRowsBetween(
+      start: start,
+      end: end,
+    );
+
+    final avgOrderRows =
+        await DatabaseService.instance.getAverageTableOrderByDayBetween(
+      start: start,
+      end: end,
+    );
+
+    final products = await DatabaseService.instance.getProductSalesBetween(
+      start: start,
+      end: end,
+      limit: 50,
+    );
+
+    final categories =
+        await DatabaseService.instance.getCategoryRevenueBetween(
+      start: start,
+      end: end,
+    );
+
+    final revenuePoints = _buildDailyPoints(
+      start: start,
+      rows: revenueRows,
+      valueKey: 'total_revenue',
+    );
+
+    final avgOrderPoints = _buildDailyPoints(
+      start: start,
+      rows: avgOrderRows,
+      valueKey: 'avg_order',
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      weekStart = start;
+      weekEnd = end;
+      weeklyRevenue = revenuePoints;
+      averageTableOrder = avgOrderPoints;
+      weeklyProductSales = products;
+      weeklyCategoryRevenue = categories;
+      lastUpdated = now;
+      isLoading = false;
+    });
+  }
+
+  @override
+Widget build(BuildContext context) {
+  if (isLoading) {
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  final weeklyTotal = weeklyRevenue.fold<double>(
+    0,
+    (sum, point) => sum + point.value,
+  );
+
+  final nonZeroAverageDays = averageTableOrder
+      .where((point) => point.value > 0)
+      .map((point) => point.value)
+      .toList();
+
+  final weeklyAverageTableOrder = nonZeroAverageDays.isEmpty
+      ? 0.0
+      : nonZeroAverageDays.reduce((a, b) => a + b) /
+          nonZeroAverageDays.length;
+
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final isNarrow = constraints.maxWidth < 950;
+      final chartHeight = constraints.maxWidth < 750 ? 360.0 : 420.0;
+      final tableCardHeight = constraints.maxWidth < 750 ? 390.0 : 460.0;
+
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Haftalık Satış Verileri',
+                        style: TextStyle(
+                          fontSize: isNarrow ? 24 : 28,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_formatDateShort(weekStart)} - ${_formatDateShort(weekEnd.subtract(const Duration(days: 1)))} arası son 7 günlük satış performansı.',
+                        style: TextStyle(
+                          fontSize: isNarrow ? 14 : 16,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!isNarrow) ...[
+                  Text(
+                    'Son güncelleme: ${_formatFullDateTime(lastUpdated)}',
+                    style: TextStyle(
+                      color: AppTheme.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                ],
+                IconButton(
+                  onPressed: _loadWeeklyData,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Yenile',
+                ),
+              ],
+            ),
+
+            if (isNarrow) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Son güncelleme: ${_formatFullDateTime(lastUpdated)}',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 24),
+
+            SizedBox(
+              height: chartHeight,
+              child: _WeeklyMetricChartCard(
+                title: 'Son 7 Gün Ciro',
+                subtitle: 'Günlere göre toplam satış cirosu',
+                summaryLabel: 'Son 7 Gün Toplam',
+                summaryValue: _formatMoneyLarge(weeklyTotal),
+                points: weeklyRevenue,
+                lineColor: AppTheme.primary,
+                valueFormatter: _formatMoneyCompact,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            if (isNarrow)
+              Column(
+                children: [
+                  SizedBox(
+                    height: tableCardHeight,
+                    child: _AnalyticsCard(
+                      title: 'Haftanın En Çok Ciro Getiren Ürünleri',
+                      icon: Icons.trending_up,
+                      child: _TopProductsList(
+                        data: weeklyProductSales,
+                        emphasizeQuantity: false,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    height: tableCardHeight,
+                    child: _AnalyticsCard(
+                      title: 'Haftalık Kategori Cirosu',
+                      icon: Icons.pie_chart,
+                      child: _CategoryRevenueList(
+                        data: weeklyCategoryRevenue,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else
+              SizedBox(
+                height: tableCardHeight,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _AnalyticsCard(
+                        title: 'Haftanın En Çok Ciro Getiren Ürünleri',
+                        icon: Icons.trending_up,
+                        child: _TopProductsList(
+                          data: weeklyProductSales,
+                          emphasizeQuantity: false,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      child: _AnalyticsCard(
+                        title: 'Haftalık Kategori Cirosu',
+                        icon: Icons.pie_chart,
+                        child: _CategoryRevenueList(
+                          data: weeklyCategoryRevenue,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 24),
+
+            SizedBox(
+              height: chartHeight,
+              child: _WeeklyMetricChartCard(
+                title: 'Son 7 Gün Ortalama Masa Hesabı',
+                subtitle: 'Günlere göre ortalama masa/adisyon tutarı',
+                summaryLabel: 'Son 7 Gün Ortalama',
+                summaryValue: _formatMoneyLarge(weeklyAverageTableOrder),
+                points: averageTableOrder,
+                lineColor: AppTheme.pastelGreen,
+                valueFormatter: _formatMoneyCompact,
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+}
+
+class _DailyMetricPoint {
+  final String label;
+  final String dateLabel;
+  final double value;
+
+  const _DailyMetricPoint({
+    required this.label,
+    required this.dateLabel,
+    required this.value,
+  });
+}
+
+class _WeeklyMetricChartCard extends StatefulWidget {
+  final String title;
+  final String subtitle;
+  final String summaryLabel;
+  final String summaryValue;
+  final List<_DailyMetricPoint> points;
+  final Color lineColor;
+  final String Function(double value) valueFormatter;
+
+  const _WeeklyMetricChartCard({
+    required this.title,
+    required this.subtitle,
+    required this.summaryLabel,
+    required this.summaryValue,
+    required this.points,
+    required this.lineColor,
+    required this.valueFormatter,
+  });
+
+  @override
+  State<_WeeklyMetricChartCard> createState() => _WeeklyMetricChartCardState();
+}
+
+class _WeeklyMetricChartCardState extends State<_WeeklyMetricChartCard> {
+  int? hoveredIndex;
+
+  int? _hoveredIndexFromPosition({
+    required Offset localPosition,
+    required Size size,
+  }) {
+    if (widget.points.isEmpty) return null;
+
+    final leftPadding = _weeklyChartLeftPadding(size.width);
+    const rightPadding = 26.0;
+    const topPadding = 18.0;
+    const bottomPadding = 52.0;
+
+    final chartLeft = leftPadding;
+    final chartRight = size.width - rightPadding;
+    final chartTop = topPadding;
+    final chartBottom = size.height - bottomPadding;
+    final chartWidth = chartRight - chartLeft;
+
+    if (chartWidth <= 0) return null;
+
+    if (localPosition.dx < chartLeft ||
+        localPosition.dx > chartRight ||
+        localPosition.dy < chartTop ||
+        localPosition.dy > chartBottom) {
+      return null;
+    }
+
+    if (widget.points.length == 1) return 0;
+
+    final relativeX = localPosition.dx - chartLeft;
+    final rawIndex =
+        ((relativeX / chartWidth) * (widget.points.length - 1)).round();
+
+    return rawIndex.clamp(0, widget.points.length - 1).toInt();
+  }
+
+  Offset _tooltipOffsetForIndex({
+    required int index,
+    required Size size,
+  }) {
+    final leftPadding = _weeklyChartLeftPadding(size.width);
+    const rightPadding = 26.0;
+
+    final chartLeft = leftPadding;
+    final chartRight = size.width - rightPadding;
+    final chartWidth = chartRight - chartLeft;
+
+    final x = widget.points.length == 1
+        ? chartLeft
+        : chartLeft + (index / (widget.points.length - 1)) * chartWidth;
+
+    final tooltipX = x > size.width - 270 ? size.width - 282 : x + 14;
+
+    return Offset(
+      tooltipX.clamp(12.0, size.width - 282).toDouble(),
+      12,
+    );
+  }
+
+  _WeeklyHoverInfo _buildHoverInfo(int index) {
+    final point = widget.points[index];
+    final previousPoint = index > 0 ? widget.points[index - 1] : null;
+
+    final previousValue = previousPoint?.value ?? 0.0;
+    final difference = point.value - previousValue;
+    final percentage = _percentageDifferenceForWeekly(
+      point.value,
+      previousValue,
+    );
+
+    return _WeeklyHoverInfo(
+      label: point.label,
+      dateLabel: point.dateLabel,
+      value: point.value,
+      previousLabel: previousPoint?.label,
+      previousDateLabel: previousPoint?.dateLabel,
+      previousValue: previousValue,
+      difference: difference,
+      percentage: percentage,
+      hasPrevious: previousPoint != null,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final maxValue = widget.points.fold<double>(
+      0,
+      (max, point) => dart_math.max(max, point.value),
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppTheme.textMuted.withOpacity(0.12),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.textMuted.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isSmall = constraints.maxWidth < 620;
+          final chartSize = Size(
+            constraints.maxWidth,
+            constraints.maxHeight - (isSmall ? 116 : 104),
+          );
+
+          final hoverInfo = hoveredIndex == null
+              ? null
+              : _buildHoverInfo(hoveredIndex!);
+
+          final tooltipOffset = hoveredIndex == null
+              ? null
+              : _tooltipOffsetForIndex(
+                  index: hoveredIndex!,
+                  size: chartSize,
+                );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isSmall)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: TextStyle(
+                        color: AppTheme.textDark,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.subtitle,
+                      style: TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${widget.summaryLabel}: ${widget.summaryValue}',
+                      style: TextStyle(
+                        color: widget.lineColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Icon(Icons.show_chart, color: widget.lineColor),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: TextStyle(
+                              color: AppTheme.textDark,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.subtitle,
+                            style: TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          widget.summaryLabel,
+                          style: TextStyle(
+                            color: AppTheme.textMuted,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.summaryValue,
+                          style: TextStyle(
+                            color: widget.lineColor,
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+              const SizedBox(height: 18),
+
+              Expanded(
+                child: MouseRegion(
+                  onHover: (event) {
+                    final index = _hoveredIndexFromPosition(
+                      localPosition: event.localPosition,
+                      size: chartSize,
+                    );
+
+                    if (index != hoveredIndex) {
+                      setState(() {
+                        hoveredIndex = index;
+                      });
+                    }
+                  },
+                  onExit: (_) {
+                    setState(() {
+                      hoveredIndex = null;
+                    });
+                  },
+                  child: Stack(
+                    children: [
+                      CustomPaint(
+                        painter: _WeeklyMetricChartPainter(
+                          points: widget.points,
+                          maxValue: dart_math.max(maxValue, 100.0) * 1.15,
+                          lineColor: widget.lineColor,
+                          valueFormatter: widget.valueFormatter,
+                          hoveredIndex: hoveredIndex,
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
+
+                      if (hoverInfo != null && tooltipOffset != null)
+                        Positioned(
+                          left: tooltipOffset.dx,
+                          top: tooltipOffset.dy,
+                          child: _WeeklyHoverTooltip(
+                            info: hoverInfo,
+                            valueFormatter: widget.valueFormatter,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WeeklyMetricChartPainter extends CustomPainter {
+  final List<_DailyMetricPoint> points;
+  final double maxValue;
+  final Color lineColor;
+  final String Function(double value) valueFormatter;
+  final int? hoveredIndex;
+
+  const _WeeklyMetricChartPainter({
+    required this.points,
+    required this.maxValue,
+    required this.lineColor,
+    required this.valueFormatter,
+    required this.hoveredIndex,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final leftPadding = _weeklyChartLeftPadding(size.width);
+    const double rightPadding = 26;
+    const double topPadding = 18;
+    const double bottomPadding = 52;
+
+    final chartRect = Rect.fromLTWH(
+      leftPadding,
+      topPadding,
+      size.width - leftPadding - rightPadding,
+      size.height - topPadding - bottomPadding,
+    );
+
+    final gridPaint = Paint()
+      ..color = AppTheme.textMuted.withOpacity(0.12)
+      ..strokeWidth = 1;
+
+    final axisPaint = Paint()
+      ..color = AppTheme.textMuted.withOpacity(0.35)
+      ..strokeWidth = 1.2;
+
+    for (int i = 0; i <= 4; i++) {
+      final y = chartRect.bottom - (chartRect.height / 4) * i;
+      final value = (maxValue / 4) * i;
+
+      canvas.drawLine(
+        Offset(chartRect.left, y),
+        Offset(chartRect.right, y),
+        gridPaint,
+      );
+
+      _drawText(
+        canvas,
+        valueFormatter(value),
+        Offset(8, y - 8),
+        AppTheme.textMuted,
+        size.width < 620 ? 10 : 12,
+        FontWeight.w500,
+      );
+    }
+
+    canvas.drawLine(
+      Offset(chartRect.left, chartRect.bottom),
+      Offset(chartRect.right, chartRect.bottom),
+      axisPaint,
+    );
+
+    canvas.drawLine(
+      Offset(chartRect.left, chartRect.top),
+      Offset(chartRect.left, chartRect.bottom),
+      axisPaint,
+    );
+
+    if (points.isEmpty) return;
+
+    for (int i = 0; i < points.length; i++) {
+      final x = _xForIndex(i, chartRect);
+
+      canvas.drawLine(
+        Offset(x, chartRect.top),
+        Offset(x, chartRect.bottom),
+        gridPaint,
+      );
+
+      _drawText(
+        canvas,
+        points[i].label,
+        Offset(x - 12, chartRect.bottom + 10),
+        AppTheme.textDark,
+        size.width < 620 ? 10 : 12,
+        FontWeight.bold,
+      );
+
+      _drawText(
+        canvas,
+        points[i].dateLabel,
+        Offset(x - 18, chartRect.bottom + 28),
+        AppTheme.textMuted,
+        size.width < 620 ? 9 : 11,
+        FontWeight.w500,
+      );
+    }
+
+    _drawFilledArea(canvas, chartRect);
+    _drawLine(canvas, chartRect);
+    _drawMarkers(canvas, chartRect);
+    _drawHoverGuide(canvas, chartRect);
+  }
+
+  double _xForIndex(int index, Rect chartRect) {
+    if (points.length == 1) {
+      return chartRect.left;
+    }
+
+    return chartRect.left +
+        (index / (points.length - 1)) * chartRect.width;
+  }
+
+  Offset _mapPoint(int index, Rect chartRect) {
+    final safeMax = maxValue <= 0 ? 1.0 : maxValue;
+    final x = _xForIndex(index, chartRect);
+    final normalized =
+        (points[index].value / safeMax).clamp(0.0, 1.0).toDouble();
+    final y = chartRect.bottom - normalized * chartRect.height;
+
+    return Offset(x, y);
+  }
+
+  void _drawFilledArea(Canvas canvas, Rect chartRect) {
+    if (points.length < 2) return;
+
+    final path = Path();
+    final first = _mapPoint(0, chartRect);
+
+    path.moveTo(first.dx, chartRect.bottom);
+    path.lineTo(first.dx, first.dy);
+
+    for (int i = 1; i < points.length; i++) {
+      final point = _mapPoint(i, chartRect);
+      path.lineTo(point.dx, point.dy);
+    }
+
+    final last = _mapPoint(points.length - 1, chartRect);
+    path.lineTo(last.dx, chartRect.bottom);
+    path.close();
+
+    final paint = Paint()
+      ..color = lineColor.withOpacity(0.10)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawLine(Canvas canvas, Rect chartRect) {
+    if (points.length < 2) return;
+
+    final path = Path();
+    final first = _mapPoint(0, chartRect);
+    path.moveTo(first.dx, first.dy);
+
+    for (int i = 1; i < points.length; i++) {
+      final point = _mapPoint(i, chartRect);
+      path.lineTo(point.dx, point.dy);
+    }
+
+    final paint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawMarkers(Canvas canvas, Rect chartRect) {
+    final fillPaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.fill;
+
+    final strokePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    for (int i = 0; i < points.length; i++) {
+      final point = _mapPoint(i, chartRect);
+      canvas.drawCircle(point, 5, fillPaint);
+      canvas.drawCircle(point, 5, strokePaint);
+    }
+  }
+
+  void _drawHoverGuide(Canvas canvas, Rect chartRect) {
+    final index = hoveredIndex;
+
+    if (index == null || index < 0 || index >= points.length) {
+      return;
+    }
+
+    final x = _xForIndex(index, chartRect);
+
+    final guidePaint = Paint()
+      ..color = lineColor.withOpacity(0.35)
+      ..strokeWidth = 2;
+
+    canvas.drawLine(
+      Offset(x, chartRect.top),
+      Offset(x, chartRect.bottom),
+      guidePaint,
+    );
+
+    final point = _mapPoint(index, chartRect);
+
+    final fillPaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.fill;
+
+    final strokePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawCircle(point, 8, fillPaint);
+    canvas.drawCircle(point, 8, strokePaint);
+  }
+
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset offset,
+    Color color,
+    double fontSize,
+    FontWeight fontWeight,
+  ) {
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+    textPainter.paint(canvas, offset);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeeklyMetricChartPainter oldDelegate) {
+    return true;
+  }
+}
+
+class _WeeklyHoverInfo {
+  final String label;
+  final String dateLabel;
+  final double value;
+  final String? previousLabel;
+  final String? previousDateLabel;
+  final double previousValue;
+  final double difference;
+  final double percentage;
+  final bool hasPrevious;
+
+  const _WeeklyHoverInfo({
+    required this.label,
+    required this.dateLabel,
+    required this.value,
+    required this.previousLabel,
+    required this.previousDateLabel,
+    required this.previousValue,
+    required this.difference,
+    required this.percentage,
+    required this.hasPrevious,
+  });
+}
+
+class _WeeklyHoverTooltip extends StatelessWidget {
+  final _WeeklyHoverInfo info;
+  final String Function(double value) valueFormatter;
+
+  const _WeeklyHoverTooltip({
+    required this.info,
+    required this.valueFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final positive = info.difference >= 0;
+    final color = positive ? Colors.green : Colors.red;
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
+      child: Container(
+        width: 270,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: color.withOpacity(0.35),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.textDark.withOpacity(0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${info.label} - ${info.dateLabel}',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _tooltipLine(
+              label: 'Değer',
+              value: valueFormatter(info.value),
+            ),
+            if (info.hasPrevious)
+              _tooltipLine(
+                label: 'Önceki',
+                value:
+                    '${info.previousLabel} ${info.previousDateLabel}: ${valueFormatter(info.previousValue)}',
+              ),
+            const Divider(height: 18),
+            if (info.hasPrevious) ...[
+              _tooltipLine(
+                label: 'Fark',
+                value: valueFormatter(info.difference),
+                valueColor: color,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${positive ? '+' : ''}${info.percentage.toStringAsFixed(1)}%',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ] else
+              const Text(
+                'Karşılaştırma için önceki gün yok.',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tooltipLine({
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
     return Padding(
-      padding: const EdgeInsets.all(32.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
         children: [
-          Text(
-            'Haftalık Satış Verileri',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textDark,
+          SizedBox(
+            width: 66,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppTheme.textMuted,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Haftalık ciro, ürün/kategori dağılımı ve ortalama masa hesabı burada gösterilecek.',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.textMuted,
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: valueColor ?? AppTheme.textDark,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -3033,7 +4042,25 @@ class _WeeklySalesDataPage extends StatelessWidget {
   }
 }
 
+double _weeklyChartLeftPadding(double width) {
+  if (width < 620) return 58.0;
+  return 76.0;
+}
 
+double _percentageDifferenceForWeekly(double current, double previous) {
+  if (previous == 0) {
+    if (current == 0) return 0;
+    return 100;
+  }
+
+  return ((current / previous) - 1) * 100;
+}
+
+String _formatDateShort(DateTime date) {
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  return '$day.$month';
+}
 
 // --------------------------------------------------------------------
 // TEST VERİSİ OLUŞTURMA SAYFASI

@@ -907,4 +907,86 @@ Future<List<double>> getHourlyBusinessRevenueForDate(DateTime date) async {
 
   return hourlyTotals;
 }
+Future<List<Map<String, dynamic>>> getDailyBusinessRevenueRowsBetween({
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      substr(created_at, 1, 10) AS day,
+      SUM(total_price) AS total_revenue
+    FROM order_events
+    WHERE created_at >= ?
+      AND created_at < ?
+      AND event_type IN ('order_added', 'item_removed')
+    GROUP BY substr(created_at, 1, 10)
+    ORDER BY day ASC
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+}
+
+Future<List<Map<String, dynamic>>> getProductSalesBetween({
+  required DateTime start,
+  required DateTime end,
+  int limit = 100,
+}) async {
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      product_id,
+      product_name,
+      product_category,
+      SUM(quantity_delta) AS total_quantity,
+      SUM(total_price) AS total_revenue
+    FROM order_events
+    WHERE created_at >= ?
+      AND created_at < ?
+      AND event_type IN ('order_added', 'item_removed')
+    GROUP BY product_id, product_name, product_category
+    HAVING SUM(quantity_delta) > 0 OR SUM(total_price) > 0
+    ORDER BY total_revenue DESC
+    LIMIT ?
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+      limit,
+    ],
+  );
+}
+
+Future<List<Map<String, dynamic>>> getAverageTableOrderByDayBetween({
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      substr(seated_at, 1, 10) AS day,
+      AVG(total_ordered) AS avg_order,
+      COUNT(*) AS table_count
+    FROM table_sessions
+    WHERE seated_at >= ?
+      AND seated_at < ?
+      AND total_ordered > 0
+    GROUP BY substr(seated_at, 1, 10)
+    ORDER BY day ASC
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+}
 }
