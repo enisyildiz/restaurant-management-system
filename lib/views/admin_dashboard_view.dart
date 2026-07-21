@@ -64,7 +64,12 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
               NavigationRailDestination(
                 icon: Icon(Icons.analytics_outlined),
                 selectedIcon: Icon(Icons.analytics),
-                label: Text('Analitik Log'),
+                label: Text('Günlük Satış Verileri'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.calendar_month_outlined),
+                selectedIcon: Icon(Icons.calendar_month),
+                label: Text('Haftalık Satış Verileri'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.bug_report_outlined),
@@ -94,6 +99,8 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
       case 3:
         return const _AnalyticsLogPage();
       case 4:
+        return const _WeeklySalesDataPage(); 
+      case 5:
         return _MockDataPage(controller: widget.controller);
       default:
         return const Center(child: Text('Sayfa bulunamadı'));
@@ -2284,7 +2291,7 @@ productsByRevenue.sort((a, b) {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Analitik Log',
+                      'Günlük Satış Verileri',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
@@ -2293,7 +2300,7 @@ productsByRevenue.sort((a, b) {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Anlık sipariş, ödeme ve masa oturum kayıtlarının veritabanına yazılıp yazılmadığını kontrol eder.',
+                      'Bugünün masa, ürün, kategori ve ödeme verilerini gösterir.',
                       style: TextStyle(
                         fontSize: 16,
                         color: AppTheme.textMuted,
@@ -2320,12 +2327,12 @@ productsByRevenue.sort((a, b) {
               childAspectRatio: 1.35,
               children: [
                 _AnalyticsCard(
-                  title: 'Son Masa Oturumları',
+                  title: 'Masa Hareketleri',
                   icon: Icons.event_seat,
                   child: _SessionsList(data: recentSessions),
                 ),
                 _AnalyticsCard(
-                  title: 'Son Sipariş Logları',
+                  title: 'Son Siparişler',
                   icon: Icons.restaurant_menu,
                   child: _OrderEventsList(data: recentOrders),
                 ),
@@ -2990,6 +2997,43 @@ String _formatPaymentInfo(Map<String, dynamic> item) {
       'Nakit ${_formatMoney(cashPaid)} (%${cashPercentage.toStringAsFixed(1)}) | '
       'Kart ${_formatMoney(cardPaid)} (%${cardPercentage.toStringAsFixed(1)})';
 }
+
+// --------------------------------------------------------------------
+// HAFTALIK SATIŞ VERİLERİ SAYFASI
+// --------------------------------------------------------------------
+class _WeeklySalesDataPage extends StatelessWidget {
+  const _WeeklySalesDataPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Haftalık Satış Verileri',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Haftalık ciro, ürün/kategori dağılımı ve ortalama masa hesabı burada gösterilecek.',
+            style: TextStyle(
+              fontSize: 16,
+              color: AppTheme.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
 
 // --------------------------------------------------------------------
 // TEST VERİSİ OLUŞTURMA SAYFASI

@@ -302,18 +302,22 @@ class OrderView extends StatelessWidget {
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                         ),
                                         onPressed: table.orders.isEmpty
-                                            ? null
-                                            : () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (_) => PaymentView(
-                                                      controller: controller,
-                                                      tableId: tableId,
-                                                    ),
+                                          ? null
+                                          : () async {
+                                              final paymentCompleted = await Navigator.push<bool>(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => PaymentView(
+                                                    controller: controller,
+                                                    tableId: tableId,
                                                   ),
-                                                );
-                                              },
+                                                ),
+                                              );
+
+                                              if (paymentCompleted == true && context.mounted) {
+                                                Navigator.pop(context);
+                                              }
+                                            },
                                         child: const Text('Ödeme Al', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                       ),
                                     ),

@@ -74,7 +74,7 @@ class _PaymentViewState extends State<PaymentView> {
           backgroundColor: AppTheme.pastelGreen,
         ),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true);
       return;
     }
 
