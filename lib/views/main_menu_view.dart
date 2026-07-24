@@ -36,92 +36,103 @@ class MainMenuView extends StatelessWidget {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(40),
+        padding: const EdgeInsets.all(24),
         child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560), // Forces 2x2 layout (260 + 260 + 32 = 552)
-            child: Wrap(
-              spacing: 32,
-              runSpacing: 32,
-              alignment: WrapAlignment.center,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-              _MainMenuCard(
-                icon: Icons.table_restaurant,
-                title: 'Masalar',
-                subtitle: 'Sipariş ekranını aç',
-                color: AppTheme.primary,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TableView(controller: controller),
-                    ),
-                  );
-                },
-              ),
-
-              if (isAdmin)
-                _MainMenuCard(
-                  icon: Icons.bar_chart,
-                  title: 'Yönetici Paneli',
-                  subtitle: 'Satışları ve grafikleri gör',
-                  color: AppTheme.pastelGreen,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => AdminDashboardView(controller: controller),
-                      ),
-                    );
-                  },
-                ),
-
-              if (isAdmin)
-                _MainMenuCard(
-                  icon: Icons.restaurant_menu,
-                  title: 'Menü',
-                  subtitle: 'Ürünleri yönet',
-                  color: AppTheme.pastelOrange,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MenuManagementView(controller: controller),
-                      ),
-                    );
-                  },
-                ),
-
-              if (isAdmin)
-                _MainMenuCard(
-                  icon: Icons.settings,
-                  title: 'Ayarlar',
-                  subtitle: 'Restoranını Yönet',
-                  color: AppTheme.primary,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TableManagementView(controller: controller),
-                      ),
-                    );
-                  },
-                ),
-
-                if (isAdmin)
-                  _MainMenuCard(
-                    icon: Icons.account_balance_wallet,
-                    title: 'Kasa',
-                    subtitle: 'Gider hareketleri ve kasa raporu',
-                    color: AppTheme.pastelYellow,
+                Expanded(
+                  child: _MainMenuCard(
+                    icon: Icons.table_restaurant,
+                    title: 'Masalar',
+                    subtitle: 'Sipariş ekranını aç',
+                    color: AppTheme.primary,
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => CashRegisterView(controller: controller),
+                          builder: (_) => TableView(controller: controller),
                         ),
                       );
                     },
+                  ),
+                ),
+
+                if (isAdmin) const SizedBox(width: 16),
+                if (isAdmin)
+                  Expanded(
+                    child: _MainMenuCard(
+                      icon: Icons.bar_chart,
+                      title: 'Yönetici Paneli',
+                      subtitle: 'Satışları ve grafikleri gör',
+                      color: AppTheme.pastelGreen,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AdminDashboardView(controller: controller),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                if (isAdmin) const SizedBox(width: 16),
+                if (isAdmin)
+                  Expanded(
+                    child: _MainMenuCard(
+                      icon: Icons.restaurant_menu,
+                      title: 'Menü',
+                      subtitle: 'Ürünleri yönet',
+                      color: AppTheme.pastelOrange,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MenuManagementView(controller: controller),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                if (isAdmin) const SizedBox(width: 16),
+                if (isAdmin)
+                  Expanded(
+                    child: _MainMenuCard(
+                      icon: Icons.settings,
+                      title: 'Ayarlar',
+                      subtitle: 'Restoranını Yönet',
+                      color: AppTheme.primary,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TableManagementView(controller: controller),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                if (isAdmin) const SizedBox(width: 16),
+                if (isAdmin)
+                  Expanded(
+                    child: _MainMenuCard(
+                      icon: Icons.account_balance_wallet,
+                      title: 'Kasa',
+                      subtitle: 'Gider hareketleri ve rapor',
+                      color: AppTheme.pastelYellow,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CashRegisterView(controller: controller),
+                          ),
+                        );
+                      },
+                    ),
                   ),
               ],
             ),
@@ -157,8 +168,7 @@ class _MainMenuCard extends StatelessWidget {
       child: Opacity(
         opacity: isEnabled ? 1 : 0.5,
         child: Container(
-          width: 260,
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: AppTheme.surfaceLight,
             borderRadius: BorderRadius.circular(24),
@@ -195,7 +205,7 @@ class _MainMenuCard extends StatelessWidget {
               Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 22,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.textDark,
                 ),

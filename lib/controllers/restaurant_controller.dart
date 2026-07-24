@@ -5,9 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+import 'package:esc_pos_utils/esc_pos_utils.dart';
+import '../services/print_service.dart';
 
 import '../models/product.dart';
 import '../models/table_model.dart';
@@ -832,19 +831,29 @@ void removeProductFromTable(
     _saveTablesSilent();
   }
 
+  String _replaceTurkishChars(String text) {
+    return text
+        .replaceAll('İ', 'I')
+        .replaceAll('Ş', 'S')
+        .replaceAll('Ğ', 'G')
+        .replaceAll('Ç', 'C')
+        .replaceAll('Ö', 'O')
+        .replaceAll('Ü', 'U')
+        .replaceAll('ı', 'i')
+        .replaceAll('ş', 's')
+        .replaceAll('ğ', 'g')
+        .replaceAll('ç', 'c')
+        .replaceAll('ö', 'o')
+        .replaceAll('ü', 'u');
+  }
+
   Future<bool> printReceipt(int tableId, PrintTarget target) async {
     final table = tables.firstWhere((t) => t.id == tableId);
-    final List<Printer> printers = await Printing.listPrinters();
+    
+    // Windows printer api via PrintService
+    final List<String> printers = await PrintService.getPrinters();
 
-    String targetPrinterName = 'MUTFAK';
-
-    if (target == PrintTarget.kitchen) {
-      targetPrinterName = 'MUTFAK';
-    } else {
-      targetPrinterName = 'KASA';
-    }
-
-    Printer? selectedPrinter;
+    String? selectedPrinter;
 
     if (table.orderGroups.isEmpty) return false;
 
@@ -854,27 +863,28 @@ void removeProductFromTable(
     if (target == PrintTarget.kitchen) {
       unprintedGroups = table.orderGroups.where((g) => !g.isPrintedToKitchen && g.items.isNotEmpty).toList();
       if (unprintedGroups.isEmpty) {
-        _showSnackbar('Yazdırılacak yeni sipariş yok.', true);
-        return false;
+        return false; 
       }
-      itemsToPrint = unprintedGroups.expand((g) => g.items).toList();
+      for (var group in unprintedGroups) {
+        itemsToPrint.addAll(group.items.where((item) {
+          final kategori = item.product.category.toLowerCase();
+          return kategori != 'içecekler' && kategori != 'tatlılar';
+        }));
+      }
     } else {
       itemsToPrint = table.orders;
     }
 
     try {
-      selectedPrinter = printers.firstWhere((p) {
-        final name = p.name.toUpperCase();
+      selectedPrinter = printers.firstWhere((pName) {
+        final name = pName.toUpperCase();
         
         if (target == PrintTarget.kitchen) {
           return name.contains('MUTFAK');
         } else {
-          // KASA araması
           if (currentUser?.role == UserRole.admin) {
-            // Admin ağdaki kasayı arıyor (UNC name: \\pos-bilgisayar\KASA)
             return name.contains('POS-BİLGİSAYAR') || name.contains('POS-BILGISAYAR') || (name.contains('\\\\') && name.contains('KASA'));
           } else {
-            // Garson yerel kasayı arıyor
             return name.contains('KASA') && !name.contains('\\\\');
           }
         }
@@ -884,68 +894,82 @@ void removeProductFromTable(
       return false; 
     }
 
-    final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
-    final ttf = pw.Font.ttf(fontData);
-
-    final pdf = pw.Document(
-      theme: pw.ThemeData.withFont(
-        base: ttf,
-      ),
-    );
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.roll80,
-        build: (pw.Context context) {
-          return pw.Container(
-            color: PdfColors.white,
-            width: double.infinity,
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              if (target == PrintTarget.cashier) ...[
-                pw.Center(child: pw.Text('BALIKÇI SÜLEYMAN', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
-                pw.SizedBox(height: 10),
-              ],
-              pw.Text('Masa: ${table.name}', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-              pw.Divider(),
-              ..._buildOrderRows(itemsToPrint, target),
-              if (target == PrintTarget.cashier) ...[
-                pw.Divider(),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text('TOPLAM:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                    pw.Text('${table.currentTotal.toStringAsFixed(2)} TL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold),),
-                    ],
-                  ),
-                ],
-            ],
-            ),
-          );
-        },
-      ),
-    );
-
     try {
-      await Printing.directPrintPdf(
-        printer: selectedPrinter,
-        onLayout: (PdfPageFormat format) async => pdf.save(),
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm80, profile);
+      List<int> bytes = [];
+
+      // Karakter sorunlarını önlemek için türkçe karakterleri değiştiriyoruz
+      final safeTableName = _replaceTurkishChars(table.name);
+
+      if (target == PrintTarget.cashier) {
+        bytes += generator.text(
+          'BALIKCI SULEYMAN', 
+          styles: const PosStyles(align: PosAlign.center, bold: true, width: PosTextSize.size2, height: PosTextSize.size2)
+        );
+        bytes += generator.emptyLines(1);
+      }
+
+      bytes += generator.text(
+        'Masa: $safeTableName', 
+        styles: const PosStyles(align: PosAlign.left, bold: true)
       );
+      bytes += generator.hr();
+
+      for (var item in itemsToPrint) {
+        final safeName = _replaceTurkishChars(item.product.name);
+        final qtyStr = (item.quantity % 1 == 0) ? item.quantity.toInt().toString() : item.quantity.toString();
+        
+        if (target == PrintTarget.kitchen) {
+          bytes += generator.text('$qtyStr $safeName', styles: const PosStyles(bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
+        } else {
+          final total = item.totalPrice.toStringAsFixed(2);
+          bytes += generator.row([
+            PosColumn(text: '$qtyStr $safeName', width: 8),
+            PosColumn(text: '$total TL', width: 4, styles: const PosStyles(align: PosAlign.right)),
+          ]);
+        }
+        bytes += generator.emptyLines(1);
+      }
+
+      if (target == PrintTarget.cashier) {
+        bytes += generator.hr();
+        final totalAmount = table.currentTotal.toStringAsFixed(2);
+        bytes += generator.row([
+          PosColumn(text: 'TOPLAM:', width: 6, styles: const PosStyles(bold: true)),
+          PosColumn(text: '$totalAmount TL', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
+        ]);
+      }
+
+      if (target == PrintTarget.kitchen) {
+        bytes += generator.beep(n: 3, duration: PosBeepDuration.beep400ms);
+      }
+
+      bytes += generator.feed(3);
+      bytes += generator.cut();
+
+      final success = PrintService.printRawBytes(selectedPrinter, bytes);
+
+      if (!success) {
+        _showSnackbar('HATA: Yazdırma işlemi başarısız oldu!', true);
+        return false;
+      }
       
       if (target == PrintTarget.kitchen) {
-        for (final group in unprintedGroups) {
+        for (var group in unprintedGroups) {
           group.isPrintedToKitchen = true;
         }
+        notifyListeners();
+        _syncFullState();
+        _showSnackbar('Mutfak Siparişi Yazdırıldı', false);
+      } else {
+        _showSnackbar('Kasa Adisyonu Yazdırıldı', false);
       }
+      return true;
     } catch (e) {
-      _showSnackbar("Yazdırma Hatası: $e", true);
+      _showSnackbar('Yazıcı Hatası: $e', true);
       return false;
     }
-
-    notifyListeners();
-    _saveTablesSilent();
-    return true;
   }
 
   void _showSnackbar(String message, bool isFailed) {
@@ -959,48 +983,7 @@ void removeProductFromTable(
     );
   }
 
-  List<pw.Widget> _buildOrderRows(List<OrderItem> orders, PrintTarget target) {
-    Iterable<OrderItem> itemsToPrint = orders;
 
-    if (target == PrintTarget.kitchen) {
-      itemsToPrint = orders.where((item) {
-        final kategori = item.product.category.toLowerCase();
-        
-        return kategori != 'içecekler' && kategori != 'tatlılar'; 
-      });
-    }
-
-    return itemsToPrint.map<pw.Widget>((item) {
-      if (target == PrintTarget.kitchen) {
-        return pw.Padding(
-          padding: const pw.EdgeInsets.symmetric(vertical: 2.0),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.start,
-            children: [
-              pw.Text(
-                '${item.quantity == item.quantity.truncateToDouble() ? item.quantity.toInt() : item.quantity}x  ${item.product.name}',
-                style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14),
-              ),
-            ],
-          ),
-        );
-      } 
-      
-      else {
-        return pw.Padding(
-          padding: const pw.EdgeInsets.symmetric(vertical: 2.0),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('${item.quantity == item.quantity.truncateToDouble() ? item.quantity.toInt() : item.quantity}x ${item.product.name}'),
-              pw.Text('${item.totalPrice.toStringAsFixed(2)} TL'),
-            ],
-          ),
-        );
-      }
-      
-    }).toList();
-  }
 
   void moveTable(int currentTableId, int targetTableId, {bool fromNetwork = false}) {
   final currentTable = tables.firstWhere((t) => t.id == currentTableId);

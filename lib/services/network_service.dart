@@ -52,7 +52,7 @@ class NetworkService {
       return Response.ok('Server is running');
     });
 
-    final wsHandler = webSocketHandler((WebSocketChannel webSocket) {
+    final wsHandler = webSocketHandler((WebSocketChannel webSocket, String? protocol) {
       _clients.add(webSocket);
       LoggerService.instance.info('Client connected. Total clients: ${_clients.length}');
       onConnected();
