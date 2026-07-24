@@ -235,11 +235,13 @@ class OrderView extends StatelessWidget {
                                       ),
                                       onPressed: table.orders.isEmpty
                                           ? null
-                                          : () {
-                                              controller.printReceipt(tableId, PrintTarget.kitchen);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('Mutfak Adisyonu Yazdırıldı.')),
-                                              );
+                                          : () async {
+                                              final success = await controller.printReceipt(tableId, PrintTarget.kitchen);
+                                              if (success && context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Mutfak Adisyonu Yazdırıldı.')),
+                                                );
+                                              }
                                             },
                                       child: const Text('Mutfak Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                     ),
@@ -257,11 +259,13 @@ class OrderView extends StatelessWidget {
                                       ),
                                       onPressed: table.orders.isEmpty
                                           ? null
-                                          : () {
-                                              controller.printReceipt(tableId, PrintTarget.cashier);
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('Kasa Adisyonu Yazdırıldı.')),
-                                              );
+                                          : () async {
+                                              final success = await controller.printReceipt(tableId, PrintTarget.cashier);
+                                              if (success && context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Kasa Adisyonu Yazdırıldı.')),
+                                                );
+                                              }
                                             },
                                       child: const Text('Kasa Yazdır', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                     ),

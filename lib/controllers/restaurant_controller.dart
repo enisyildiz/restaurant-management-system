@@ -832,15 +832,21 @@ void removeProductFromTable(
     _saveTablesSilent();
   }
 
-  Future<void> printReceipt(int tableId, PrintTarget target) async {
+  Future<bool> printReceipt(int tableId, PrintTarget target) async {
     final table = tables.firstWhere((t) => t.id == tableId);
     final List<Printer> printers = await Printing.listPrinters();
 
-    String targetPrinterName = target == PrintTarget.kitchen ? 'MUTFAK' : 'KASA';
+    String targetPrinterName = 'MUTFAK';
+
+    if (target == PrintTarget.kitchen) {
+      targetPrinterName = 'MUTFAK';
+    } else {
+      targetPrinterName = 'KASA';
+    }
 
     Printer? selectedPrinter;
 
-    if (table.orderGroups.isEmpty) return;
+    if (table.orderGroups.isEmpty) return false;
 
     List<OrderItem> itemsToPrint = [];
     List<OrderGroup> unprintedGroups = [];
@@ -849,7 +855,7 @@ void removeProductFromTable(
       unprintedGroups = table.orderGroups.where((g) => !g.isPrintedToKitchen && g.items.isNotEmpty).toList();
       if (unprintedGroups.isEmpty) {
         _showSnackbar('Yazdırılacak yeni sipariş yok.', true);
-        return;
+        return false;
       }
       itemsToPrint = unprintedGroups.expand((g) => g.items).toList();
     } else {
@@ -857,12 +863,25 @@ void removeProductFromTable(
     }
 
     try {
-      selectedPrinter = printers.firstWhere(
-        (p) => p.name.toUpperCase().contains(targetPrinterName.toUpperCase()),
-      );
+      selectedPrinter = printers.firstWhere((p) {
+        final name = p.name.toUpperCase();
+        
+        if (target == PrintTarget.kitchen) {
+          return name.contains('MUTFAK');
+        } else {
+          // KASA araması
+          if (currentUser?.role == UserRole.admin) {
+            // Admin ağdaki kasayı arıyor (UNC name: \\pos-bilgisayar\KASA)
+            return name.contains('POS-BİLGİSAYAR') || name.contains('POS-BILGISAYAR') || (name.contains('\\\\') && name.contains('KASA'));
+          } else {
+            // Garson yerel kasayı arıyor
+            return name.contains('KASA') && !name.contains('\\\\');
+          }
+        }
+      });
     } catch (e) {
-      _showSnackbar('HATA: Yazıcı "$targetPrinterName" sistemde bulunamadı!', true);
-      return; 
+      _showSnackbar('HATA: Kasa/Mutfak yazıcısı sistemde bulunamadı!', true);
+      return false; 
     }
 
     final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
@@ -878,12 +897,17 @@ void removeProductFromTable(
       pw.Page(
         pageFormat: PdfPageFormat.roll80,
         build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+          return pw.Container(
+            color: PdfColors.white,
+            width: double.infinity,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Center(child: pw.Text('BALIKÇI SÜLEYMAN', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
-              pw.SizedBox(height: 10),
-              pw.Text('Masa No: $tableId', style: const pw.TextStyle(fontSize: 18)),
+              if (target == PrintTarget.cashier) ...[
+                pw.Center(child: pw.Text('BALIKÇI SÜLEYMAN', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold))),
+                pw.SizedBox(height: 10),
+              ],
+              pw.Text('Masa: ${table.name}', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
               pw.Divider(),
               ..._buildOrderRows(itemsToPrint, target),
               if (target == PrintTarget.cashier) ...[
@@ -897,6 +921,7 @@ void removeProductFromTable(
                   ),
                 ],
             ],
+            ),
           );
         },
       ),
@@ -915,10 +940,12 @@ void removeProductFromTable(
       }
     } catch (e) {
       _showSnackbar("Yazdırma Hatası: $e", true);
+      return false;
     }
 
     notifyListeners();
     _saveTablesSilent();
+    return true;
   }
 
   void _showSnackbar(String message, bool isFailed) {
