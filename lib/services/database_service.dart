@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/table_model.dart';
 
 class DatabaseService {
-  static const int _databaseVersion = 5;
+  static const int _databaseVersion = 8;
   static final DatabaseService instance = DatabaseService._init();
   Database? _database;
 
@@ -74,6 +74,9 @@ CREATE TABLE receipt_items (
 )
 ''');
     await _createAnalyticsTables(db);
+    await _createCashRegisterTables(db);
+    await _seedDefaultExpenseReasons(db);
+    await _seedDefaultExpensePaymentMethods(db);
   }
 
 Future<void> _createAnalyticsTables(Database db) async {
@@ -187,6 +190,140 @@ Future<void> _createAnalyticsTables(Database db) async {
       ''');
         }
 
+  Future<void> _createCashRegisterTables(Database db) async {
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS expense_reasons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )
+  ''');
+
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS expense_payment_methods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT
+    )
+  ''');
+
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS expense_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+      reason_id INTEGER,
+      reason_name TEXT NOT NULL,
+
+      payment_method_id INTEGER,
+      payment_method_name TEXT,
+
+      amount REAL NOT NULL,
+      comment TEXT,
+
+      created_at TEXT NOT NULL,
+
+      username TEXT,
+      user_role TEXT,
+
+      FOREIGN KEY (reason_id) REFERENCES expense_reasons (id),
+      FOREIGN KEY (payment_method_id) REFERENCES expense_payment_methods (id)
+    )
+  ''');
+
+  await db.execute('''
+    CREATE INDEX IF NOT EXISTS idx_expense_events_created_at
+    ON expense_events(created_at)
+  ''');
+
+  await db.execute('''
+    CREATE INDEX IF NOT EXISTS idx_expense_events_reason
+    ON expense_events(reason_name)
+  ''');
+}
+
+Future<void> _seedDefaultExpenseReasons(Database db) async {
+  final now = DateTime.now().toIso8601String();
+
+  final defaultReasons = [
+    'Mutfak Alışverişi',
+    'Personel Ödemesi',
+    'Temizlik Malzemesi',
+    'Bakım / Tamir',
+    'Elektrik / Su / Doğalgaz',
+    'Kira',
+    'Diğer',
+  ];
+
+  for (int i = 0; i < defaultReasons.length; i++) {
+    await db.insert(
+      'expense_reasons',
+      {
+        'name': defaultReasons[i],
+        'is_active': 1,
+        'sort_order': i,
+        'created_at': now,
+        'updated_at': null,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+}
+
+Future<void> _seedDefaultExpensePaymentMethods(Database db) async {
+  final now = DateTime.now().toIso8601String();
+
+  final defaultMethods = [
+    'Nakit',
+    'Kredi Kartı',
+  ];
+
+  for (int i = 0; i < defaultMethods.length; i++) {
+    await db.insert(
+      'expense_payment_methods',
+      {
+        'name': defaultMethods[i],
+        'is_active': 1,
+        'sort_order': i,
+        'created_at': now,
+        'updated_at': null,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+}
+
+Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
+  final columns = await db.rawQuery('PRAGMA table_info(expense_events)');
+
+  final columnNames = columns
+      .map((column) => column['name']?.toString())
+      .whereType<String>()
+      .toSet();
+
+  if (!columnNames.contains('payment_method_id')) {
+    await db.execute(
+      'ALTER TABLE expense_events ADD COLUMN payment_method_id INTEGER;',
+    );
+  }
+
+  if (!columnNames.contains('payment_method_name')) {
+    await db.execute(
+      'ALTER TABLE expense_events ADD COLUMN payment_method_name TEXT;',
+    );
+  }
+
+  await db.execute('''
+    CREATE INDEX IF NOT EXISTS idx_expense_events_payment_method
+    ON expense_events(payment_method_name)
+  ''');
+}
+
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE receipts ADD COLUMN table_code TEXT;');
@@ -205,6 +342,38 @@ Future<void> _createAnalyticsTables(Database db) async {
       await db.execute('ALTER TABLE receipts ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0;');
       await db.execute('ALTER TABLE table_sessions ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0;');
       await db.execute('ALTER TABLE receipt_items ADD COLUMN session_id INTEGER;');
+    }
+
+    if (oldVersion < 6) {
+      await _createCashRegisterTables(db);
+      await _seedDefaultExpenseReasons(db);
+    }
+
+    if (oldVersion < 7) {
+      await _createCashRegisterTables(db);
+      await _seedDefaultExpensePaymentMethods(db);
+
+      final columns = await db.rawQuery('PRAGMA table_info(expense_events)');
+      final columnNames = columns.map((column) => column['name']).toSet();
+
+      if (!columnNames.contains('payment_method_id')) {
+        await db.execute(
+          'ALTER TABLE expense_events ADD COLUMN payment_method_id INTEGER;',
+        );
+      }
+
+      if (!columnNames.contains('payment_method_name')) {
+        await db.execute(
+          'ALTER TABLE expense_events ADD COLUMN payment_method_name TEXT;',
+        );
+      }
+    }
+
+      if (oldVersion < 8) {
+        await _createCashRegisterTables(db);
+        await _ensureExpenseEventPaymentColumnsAndIndex(db);
+        await _seedDefaultExpenseReasons(db);
+        await _seedDefaultExpensePaymentMethods(db);
     }
   }
 
@@ -988,5 +1157,244 @@ Future<List<Map<String, dynamic>>> getAverageTableOrderByDayBetween({
       end.toIso8601String(),
     ],
   );
+}
+Future<List<Map<String, dynamic>>> getExpenseReasons({
+  bool includeInactive = false,
+}) async {
+  final db = await instance.database;
+
+  return db.query(
+    'expense_reasons',
+    where: includeInactive ? null : 'is_active = ?',
+    whereArgs: includeInactive ? null : [1],
+    orderBy: 'sort_order ASC, name ASC',
+  );
+}
+
+Future<int> addExpenseReason(String name) async {
+  final db = await instance.database;
+  final now = DateTime.now().toIso8601String();
+
+  final currentReasons = await getExpenseReasons(includeInactive: true);
+
+  return db.insert(
+    'expense_reasons',
+    {
+      'name': name.trim(),
+      'is_active': 1,
+      'sort_order': currentReasons.length,
+      'created_at': now,
+      'updated_at': null,
+    },
+    conflictAlgorithm: ConflictAlgorithm.ignore,
+  );
+}
+
+Future<void> updateExpenseReason({
+  required int reasonId,
+  required String name,
+}) async {
+  final db = await instance.database;
+
+  await db.update(
+    'expense_reasons',
+    {
+      'name': name.trim(),
+      'updated_at': DateTime.now().toIso8601String(),
+    },
+    where: 'id = ?',
+    whereArgs: [reasonId],
+  );
+}
+
+Future<void> deactivateExpenseReason(int reasonId) async {
+  final db = await instance.database;
+
+  await db.update(
+    'expense_reasons',
+    {
+      'is_active': 0,
+      'updated_at': DateTime.now().toIso8601String(),
+    },
+    where: 'id = ?',
+    whereArgs: [reasonId],
+  );
+}
+
+Future<int> insertExpenseEvent({
+  required int? reasonId,
+  required String reasonName,
+  required int? paymentMethodId,
+  required String paymentMethodName,
+  required double amount,
+  required DateTime createdAt,
+  String? comment,
+  String? username,
+  String? userRole,
+}) async {
+  final db = await instance.database;
+
+  return db.insert('expense_events', {
+    'reason_id': reasonId,
+    'reason_name': reasonName,
+    'payment_method_id': paymentMethodId,
+    'payment_method_name': paymentMethodName,
+    'amount': amount,
+    'comment': comment,
+    'created_at': createdAt.toIso8601String(),
+    'username': username,
+    'user_role': userRole,
+  });
+}
+
+Future<List<Map<String, dynamic>>> getExpenseEventsBetween({
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
+
+  return db.query(
+    'expense_events',
+    where: 'created_at >= ? AND created_at < ?',
+    whereArgs: [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+    orderBy: 'created_at DESC',
+  );
+}
+
+Future<int> deleteExpenseEvent(int expenseId) async {
+  final db = await instance.database;
+
+  return db.delete(
+    'expense_events',
+    where: 'id = ?',
+    whereArgs: [expenseId],
+  );
+}
+
+Future<List<Map<String, dynamic>>> getCashIncomeByDayBetween({
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      substr(created_at, 1, 10) AS day,
+      payment_method,
+      SUM(amount) AS total_amount
+    FROM payment_events
+    WHERE created_at >= ?
+      AND created_at < ?
+    GROUP BY substr(created_at, 1, 10), payment_method
+    ORDER BY day ASC
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+}
+
+Future<List<Map<String, dynamic>>> getExpenseSummaryByReasonAndDayBetween({
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      reason_name,
+      COALESCE(payment_method_name, 'Belirtilmedi') AS payment_method_name,
+      substr(created_at, 1, 10) AS day,
+      SUM(amount) AS total_amount
+    FROM expense_events
+    WHERE created_at >= ?
+      AND created_at < ?
+    GROUP BY reason_name, COALESCE(payment_method_name, 'Belirtilmedi'), substr(created_at, 1, 10)
+    ORDER BY reason_name ASC, payment_method_name ASC, day ASC
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+}
+
+Future<List<Map<String, dynamic>>> getExpensePaymentMethods({
+  bool includeInactive = false,
+}) async {
+  final db = await instance.database;
+
+  return db.query(
+    'expense_payment_methods',
+    where: includeInactive ? null : 'is_active = ?',
+    whereArgs: includeInactive ? null : [1],
+    orderBy: 'sort_order ASC, name ASC',
+  );
+}
+
+Future<int> addExpensePaymentMethod(String name) async {
+  final db = await instance.database;
+  final now = DateTime.now().toIso8601String();
+
+  final currentMethods =
+      await getExpensePaymentMethods(includeInactive: true);
+
+  return db.insert(
+    'expense_payment_methods',
+    {
+      'name': name.trim(),
+      'is_active': 1,
+      'sort_order': currentMethods.length,
+      'created_at': now,
+      'updated_at': null,
+    },
+    conflictAlgorithm: ConflictAlgorithm.ignore,
+  );
+}
+
+Future<void> updateExpensePaymentMethod({
+  required int methodId,
+  required String name,
+}) async {
+  final db = await instance.database;
+
+  await db.update(
+    'expense_payment_methods',
+    {
+      'name': name.trim(),
+      'updated_at': DateTime.now().toIso8601String(),
+    },
+    where: 'id = ?',
+    whereArgs: [methodId],
+  );
+}
+
+Future<void> deactivateExpensePaymentMethod(int methodId) async {
+  final db = await instance.database;
+
+  await db.update(
+    'expense_payment_methods',
+    {
+      'is_active': 0,
+      'updated_at': DateTime.now().toIso8601String(),
+    },
+    where: 'id = ?',
+    whereArgs: [methodId],
+  );
+}
+
+Future<void> ensureCashRegisterSchema() async {
+  final db = await instance.database;
+
+  await _createCashRegisterTables(db);
+  await _ensureExpenseEventPaymentColumnsAndIndex(db);
+  await _seedDefaultExpenseReasons(db);
+  await _seedDefaultExpensePaymentMethods(db);
 }
 }

@@ -6,6 +6,7 @@ import 'table_management_view.dart';
 import 'login_view.dart';
 import '/controllers/restaurant_controller.dart';
 import '../theme/theme.dart';
+import 'cash_register_view.dart';
 
 class MainMenuView extends StatelessWidget {
   final RestaurantController controller;
@@ -106,6 +107,22 @@ class MainMenuView extends StatelessWidget {
                     );
                   },
                 ),
+
+                if (isAdmin)
+                  _MainMenuCard(
+                    icon: Icons.account_balance_wallet,
+                    title: 'Kasa',
+                    subtitle: 'Gider hareketleri ve kasa raporu',
+                    color: AppTheme.pastelYellow,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CashRegisterView(controller: controller),
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
