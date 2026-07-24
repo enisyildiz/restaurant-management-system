@@ -42,14 +42,14 @@ class RestaurantController extends ChangeNotifier {
   final Map<int, Future<int?>> _sessionCreationFutures = {};
 
   bool login(String username, String password) {
-    if (username == 'admin' && password == 'admin123') {
-      currentUser = const User(username: 'admin', role: UserRole.admin);
+    if (username == 'kasa' && password == '250111') {
+      currentUser = const User(username: 'kasa', role: UserRole.admin);
       startupTime = DateTime.now().millisecondsSinceEpoch;
       _initNetwork();
       notifyListeners();
       return true;
-    } else if (username == 'waiter' && password == 'waiter123') {
-      currentUser = const User(username: 'waiter', role: UserRole.waiter);
+    } else if (username == 'tablet' && password == '123') {
+      currentUser = const User(username: 'tablet', role: UserRole.waiter);
       startupTime = DateTime.now().millisecondsSinceEpoch;
       // Garson bilgisayarında DB başlatılmıyor
       _initNetwork();

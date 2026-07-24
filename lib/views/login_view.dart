@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
@@ -139,12 +140,14 @@ class _LoginViewState extends State<LoginView> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.error_outline, color: Colors.redAccent),
+                            const Icon(Icons.error_outline,
+                                color: Colors.redAccent),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 _errorMessage!,
-                                style: const TextStyle(color: AppTheme.textDark),
+                                style:
+                                    const TextStyle(color: AppTheme.textDark),
                               ),
                             ),
                           ],
@@ -182,7 +185,8 @@ class _LoginViewState extends State<LoginView> {
                                 height: 24,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 3,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
                               )
                             : const Text(
@@ -193,6 +197,36 @@ class _LoginViewState extends State<LoginView> {
                                   letterSpacing: 1.5,
                                 ),
                               ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.keyboard, size: 24),
+                        label: const Text(
+                          'EKRAN KLAVYESİ',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.surfaceLight,
+                          foregroundColor: AppTheme.primaryDark,
+                          elevation: 0,
+                          side: BorderSide(
+                              color: AppTheme.primaryDark.withOpacity(0.5),
+                              width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () {
+                          Process.run('cmd.exe', ['/c', 'start', 'osk']);
+                        },
                       ),
                     ),
                   ],
@@ -226,7 +260,8 @@ class _LoginViewState extends State<LoginView> {
           hintStyle: TextStyle(color: AppTheme.textMuted),
           prefixIcon: Icon(icon, color: AppTheme.primaryDark),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         ),
       ),
     );
