@@ -103,10 +103,10 @@ class TableView extends StatelessWidget {
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 300),
                               width: 140,
-                              height: 140,
+                              height: 90,
                               decoration: BoxDecoration(
                                 color: bgColor.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: borderColor.withOpacity(0.5),
                                   width: 2,
@@ -122,38 +122,22 @@ class TableView extends StatelessWidget {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: bgColor.withOpacity(0.25),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Text(
-                                      table.code,
-                                      style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w900,
-                                        color: bgColor.withAlpha(200),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
                                   Text(
                                     table.name,
                                     style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.textDark,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black,
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
                                     statusText,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: bgColor,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black,
                                     ),
                                   ),
                                 ],
