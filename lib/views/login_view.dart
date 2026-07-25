@@ -229,6 +229,36 @@ class _LoginViewState extends State<LoginView> {
                         },
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.power_settings_new, size: 24),
+                        label: const Text(
+                          'UYGULAMAYI KAPAT',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.surfaceLight,
+                          foregroundColor: AppTheme.pastelRed, // Kırmızımsı ton
+                          elevation: 0,
+                          side: BorderSide(
+                              color: AppTheme.pastelRed.withOpacity(0.5),
+                              width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        onPressed: () {
+                          exit(0);
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
