@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:flutter/services.dart';
@@ -28,6 +30,14 @@ class RestaurantController extends ChangeNotifier {
   List<Product> _menu = [];
   bool isLoadingMenu = true;
   List<String> editableCategories = [];
+  List<Map<String, dynamic>> _offlineQueue = [];
+  final Set<String> _processedEvents = {};
+
+  String _generateEventId() {
+    final random = math.Random();
+    return List.generate(16, (_) => random.nextInt(16).toRadixString(16)).join();
+  }
+
   List<String> get categories => editableCategories;
   String selectedCategory = '';
 
@@ -50,9 +60,9 @@ class RestaurantController extends ChangeNotifier {
       return true;
     } else if (username == 'tablet' && password == '123') {
       currentUser = const User(username: 'tablet', role: UserRole.waiter);
-      startupTime = DateTime.now().millisecondsSinceEpoch;
-      // Garson bilgisayarında DB başlatılmıyor
-      _initNetwork();
+      _loadOfflineQueue().then((_) {
+        _initNetwork();
+      });
       notifyListeners();
       return true;
     }
@@ -72,31 +82,56 @@ class RestaurantController extends ChangeNotifier {
   }
 
   void _syncFullState() {
-    if (_networkService != null) {
-      _networkService!.sendMessage({
-        'action': 'handshake',
-        'startupTime': startupTime,
-      });
+    if (currentUser?.role.name == 'admin') {
+      return;
     }
+    _flushOfflineQueue();
+  }
+
+  void _flushOfflineQueue() async {
+    if (_offlineQueue.isNotEmpty && _networkService != null) {
+      LoggerService.instance.info('Flushing offline queue: ${_offlineQueue.length} items');
+      for (final actionData in _offlineQueue) {
+        _networkService!.sendMessage(actionData);
+      }
+    }
+    
+    _networkService?.sendMessage({
+      'action': 'request_full_state',
+    });
   }
 
   void _handleNetworkMessage(Map<String, dynamic> data) {
     final action = data['action'];
+
+    if (action == 'ack') {
+      final ackEventId = data['eventId'];
+      if (ackEventId != null) {
+        _offlineQueue.removeWhere((e) => e['eventId'] == ackEventId);
+        _saveOfflineQueue();
+        LoggerService.instance.info('Received ACK for $ackEventId. Queue size: ${_offlineQueue.length}');
+      }
+      return;
+    }
+
+    final eventId = data['eventId'];
+    if (eventId != null && currentUser?.role.name == 'admin') {
+      if (_processedEvents.contains(eventId)) {
+        _networkService?.sendMessage({'action': 'ack', 'eventId': eventId});
+        return;
+      }
+      _processedEvents.add(eventId);
+    }
     
-    if (action == 'handshake') {
-      final remoteStartup = data['startupTime'] as int;
-      if (startupTime != null && startupTime! > remoteStartup) {
+    if (action == 'request_full_state') {
+      if (currentUser?.role.name == 'admin') {
         _networkService!.sendMessage({
-          'action': 'request_full_state',
+          'action': 'full_state',
+          'tables': tables.map((t) => t.toJson()).toList(),
+          'menu': _menu.map((p) => p.toJson()).toList(),
+          'categories': editableCategories,
         });
       }
-    } else if (action == 'request_full_state') {
-      _networkService!.sendMessage({
-        'action': 'full_state',
-        'tables': tables.map((t) => t.toJson()).toList(),
-        'menu': _menu.map((p) => p.toJson()).toList(),
-        'categories': editableCategories,
-      });
     } else if (action == 'full_state') {
       if (data.containsKey('tables')) {
         final remoteTablesData = data['tables'] as List<dynamic>;
@@ -165,6 +200,10 @@ class RestaurantController extends ChangeNotifier {
     } else if (action == 'set_custom_price') {
       setCustomPrice(data['tableId'], data['productId'], (data['price'] as num).toDouble(), fromNetwork: true);
     }
+
+    if (eventId != null && currentUser?.role.name == 'admin') {
+      _networkService?.sendMessage({'action': 'ack', 'eventId': eventId});
+    }
   }
 
   void logout() {
@@ -193,12 +232,13 @@ class RestaurantController extends ChangeNotifier {
       notifyListeners();
 
       if (!fromNetwork && _networkService != null) {
-        _networkService!.sendMessage({
+        final actionData = {
           'action': 'set_custom_price',
           'tableId': tableId,
           'productId': productId,
           'price': newPrice,
-        });
+        };
+        _queueAction(actionData);
       }
       
       _saveTablesSilent();
@@ -676,12 +716,13 @@ void addProductToTable(
   );
 
   if (!fromNetwork && _networkService != null) {
-    _networkService!.sendMessage({
+    final actionData = {
       'action': 'add_product',
       'tableId': tableId,
       'product': product.toJson(),
       'orderItemId': newItem.id,
-    });
+    };
+    _queueAction(actionData);
   }
 
   notifyListeners();
@@ -734,12 +775,13 @@ void setProductQuantity(
   );
 
   if (!fromNetwork && _networkService != null) {
-    _networkService!.sendMessage({
+    final actionData = {
       'action': 'set_product_quantity',
       'tableId': tableId,
       'orderItemId': orderItemId,
       'quantity': newQuantity,
-    });
+    };
+    _queueAction(actionData);
   }
 
   notifyListeners();
@@ -784,11 +826,12 @@ void removeProductFromTable(
   }
 
   if (!fromNetwork && _networkService != null) {
-    _networkService!.sendMessage({
+    final actionData = {
       'action': 'remove_product',
       'tableId': tableId,
       'orderItemId': orderItemId,
-    });
+    };
+    _queueAction(actionData);
   }
 
   notifyListeners();
@@ -815,10 +858,11 @@ void removeProductFromTable(
     table.seatedAt = null;
     
     if (!fromNetwork && _networkService != null) {
-      _networkService!.sendMessage({
+      final actionData = {
         'action': 'checkout_table',
         'tableId': tableId,
-      });
+      };
+      _queueAction(actionData);
     }
     notifyListeners();
     _saveTablesSilent();
@@ -1026,12 +1070,12 @@ void removeProductFromTable(
   currentTable.seatedAt = null;
 
   if (!fromNetwork && _networkService != null) {
-    _networkService!.sendMessage({
+    final actionData = {
       'action': 'move_table',
       'currentTableId': currentTableId,
       'targetTableId': targetTableId,
-    });
-    _showSnackbar('Masa başarıyla taşındı.', true);
+    };
+    _queueAction(actionData);
   }
 
   notifyListeners();
@@ -1145,12 +1189,13 @@ void removeProductFromTable(
     );
 
     if (!fromNetwork && _networkService != null) {
-      _networkService!.sendMessage({
+      final actionData = {
         'action': 'add_payment',
         'tableId': tableId,
         'amount': safeAmount,
         'method': method.toString(),
-      });
+      };
+      _queueAction(actionData);
     }
 
     final newRemaining = remainingForTable(tableId);
@@ -1160,5 +1205,50 @@ void removeProductFromTable(
       notifyListeners();
     }
     _saveTablesSilent();
+  }
+
+  Future<File> get _offlineQueueFile async {
+    final directory = await getApplicationDocumentsDirectory();
+    return File(p.join(directory.path, 'offline_queue.json'));
+  }
+
+  Future<void> _loadOfflineQueue() async {
+    try {
+      final file = await _offlineQueueFile;
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        final List<dynamic> decoded = jsonDecode(content);
+        _offlineQueue = decoded.cast<Map<String, dynamic>>();
+      }
+    } catch (e) {
+      LoggerService.instance.error('Error loading offline queue: $e');
+    }
+  }
+
+  Future<void> _saveOfflineQueue() async {
+    try {
+      final file = await _offlineQueueFile;
+      await file.writeAsString(jsonEncode(_offlineQueue));
+    } catch (e) {
+      LoggerService.instance.error('Error saving offline queue: $e');
+    }
+  }
+
+  void _queueAction(Map<String, dynamic> action) {
+    if (currentUser?.role.name == 'admin') {
+      _networkService?.sendMessage(action);
+      return;
+    }
+    
+    action['eventId'] ??= _generateEventId();
+    
+    final existingIndex = _offlineQueue.indexWhere((e) => e['eventId'] == action['eventId']);
+    if (existingIndex == -1) {
+      _offlineQueue.add(action);
+      _saveOfflineQueue();
+      LoggerService.instance.info('Added action to offline queue. Queue size: ${_offlineQueue.length}');
+    }
+    
+    _networkService?.sendMessage(action);
   }
 }

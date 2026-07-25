@@ -134,7 +134,7 @@ class NetworkService {
     }
   }
 
-  void sendMessage(Map<String, dynamic> data) {
+  bool sendMessage(Map<String, dynamic> data) {
     try {
       final message = jsonEncode(data);
       
@@ -143,16 +143,20 @@ class NetworkService {
         for (final client in _clients) {
           client.sink.add(message);
         }
+        return true;
       } else {
         if (_isConnected && _clientChannel != null) {
           LoggerService.instance.info("Sending data to server (Action: ${data['action']})");
           _clientChannel!.sink.add(message);
+          return true;
         } else {
           LoggerService.instance.warning('Attempted to send message but client is not connected');
+          return false;
         }
       }
     } catch (e) {
       LoggerService.instance.error('Message send error: $e');
+      return false;
     }
   }
 
