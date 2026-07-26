@@ -876,7 +876,19 @@ void removeProductFromTable(
   }
 
   String _replaceTurkishChars(String text) {
-    return text
+    var s = text
+        .replaceAll('İ', 'I') // İ
+        .replaceAll('ı', 'i') // ı
+        .replaceAll('Ş', 'S') // Ş
+        .replaceAll('ş', 's') // ş
+        .replaceAll('Ğ', 'G') // Ğ
+        .replaceAll('ğ', 'g') // ğ
+        .replaceAll('Ç', 'C') // Ç
+        .replaceAll('ç', 'c') // ç
+        .replaceAll('Ö', 'O') // Ö
+        .replaceAll('ö', 'o') // ö
+        .replaceAll('Ü', 'U') // Ü
+        .replaceAll('ü', 'u') // ü
         .replaceAll('İ', 'I')
         .replaceAll('Ş', 'S')
         .replaceAll('Ğ', 'G')
@@ -889,6 +901,15 @@ void removeProductFromTable(
         .replaceAll('ç', 'c')
         .replaceAll('ö', 'o')
         .replaceAll('ü', 'u');
+        
+    StringBuffer sb = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      int code = s.codeUnitAt(i);
+      if (code >= 32 && code <= 126) {
+        sb.writeCharCode(code);
+      }
+    }
+    return sb.toString();
   }
 
   Future<bool> printReceipt(int tableId, PrintTarget target) async {
@@ -954,9 +975,13 @@ void removeProductFromTable(
         bytes += generator.emptyLines(1);
       }
 
+      final masaStyles = target == PrintTarget.kitchen 
+        ? const PosStyles(align: PosAlign.left, bold: true, width: PosTextSize.size2, height: PosTextSize.size2)
+        : const PosStyles(align: PosAlign.left, bold: true);
+
       bytes += generator.text(
         'Masa: $safeTableName', 
-        styles: const PosStyles(align: PosAlign.left, bold: true)
+        styles: masaStyles
       );
       bytes += generator.hr();
 
