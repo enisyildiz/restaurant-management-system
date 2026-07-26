@@ -6,20 +6,27 @@ import '../theme/theme.dart';
 import 'order_view.dart';
 import 'login_view.dart';
 
-class TableView extends StatelessWidget {
+class TableView extends StatefulWidget {
   final RestaurantController controller;
 
   const TableView({Key? key, required this.controller}) : super(key: key);
 
   @override
+  State<TableView> createState() => _TableViewState();
+}
+
+class _TableViewState extends State<TableView> {
+  double _tableScale = 1.0;
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: controller,
+      animation: widget.controller,
       builder: (context, child) {
         final List<String> areas = ['Tümü'];
-        areas.addAll(controller.tables.map((t) => t.area).toSet());
+        areas.addAll(widget.controller.tables.map((t) => t.area).toSet());
 
-        if (controller.tables.isEmpty) {
+        if (widget.controller.tables.isEmpty) {
           return const Scaffold(
               body: Center(child: CircularProgressIndicator()));
         }
@@ -39,15 +46,38 @@ class TableView extends StatelessWidget {
                     const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               actions: [
-                if (controller.currentUser?.role == UserRole.waiter)
+                SizedBox(
+                  width: 150,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.zoom_out, size: 20, color: AppTheme.primary),
+                      Expanded(
+                        child: Slider(
+                          value: _tableScale,
+                          min: 0.5,
+                          max: 2.0,
+                          activeColor: AppTheme.primary,
+                          onChanged: (val) {
+                            setState(() {
+                              _tableScale = val;
+                            });
+                          },
+                        ),
+                      ),
+                      const Icon(Icons.zoom_in, size: 20, color: AppTheme.primary),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (widget.controller.currentUser?.role == UserRole.waiter)
                   IconButton(
                     icon: const Icon(Icons.logout),
                     onPressed: () {
-                      controller.logout();
+                      widget.controller.logout();
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => LoginView(controller: controller)),
+                            builder: (_) => LoginView(controller: widget.controller)),
                       );
                     },
                     tooltip: 'Çıkış Yap',
@@ -58,8 +88,8 @@ class TableView extends StatelessWidget {
             body: TabBarView(
               children: areas.map((area) {
                 final areaTables = area == 'Tümü'
-                    ? controller.tables
-                    : controller.tables.where((t) => t.area == area).toList();
+                    ? widget.controller.tables
+                    : widget.controller.tables.where((t) => t.area == area).toList();
 
                 return Padding(
                   padding: const EdgeInsets.all(24.0),
@@ -84,8 +114,7 @@ class TableView extends StatelessWidget {
                           } else {
                             bgColor = AppTheme.pastelOrange;
                             borderColor = AppTheme.pastelOrange;
-                            statusText =
-                                '${table.currentTotal.toStringAsFixed(2)} ₺';
+                            statusText = 'DOLU';
                           }
 
                           return GestureDetector(
@@ -94,7 +123,7 @@ class TableView extends StatelessWidget {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => OrderView(
-                                    controller: controller,
+                                    controller: widget.controller,
                                     tableId: table.id,
                                   ),
                                 ),
@@ -102,20 +131,20 @@ class TableView extends StatelessWidget {
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 300),
-                              width: 140,
-                              height: 90,
+                              width: 140 * _tableScale,
+                              height: 90 * _tableScale,
                               decoration: BoxDecoration(
                                 color: bgColor.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(16 * _tableScale),
                                 border: Border.all(
                                   color: borderColor.withOpacity(0.5),
-                                  width: 2,
+                                  width: 2 * _tableScale,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: bgColor.withOpacity(0.1),
-                                    blurRadius: 15,
-                                    offset: const Offset(0, 8),
+                                    blurRadius: 15 * _tableScale,
+                                    offset: Offset(0, 8 * _tableScale),
                                   ),
                                 ],
                               ),
@@ -124,18 +153,18 @@ class TableView extends StatelessWidget {
                                 children: [
                                   Text(
                                     table.name,
-                                    style: const TextStyle(
-                                      fontSize: 20,
+                                    style: TextStyle(
+                                      fontSize: 20 * _tableScale,
                                       fontWeight: FontWeight.w900,
                                       color: Colors.black,
                                     ),
                                     textAlign: TextAlign.center,
                                   ),
-                                  const SizedBox(height: 6),
+                                  SizedBox(height: 6 * _tableScale),
                                   Text(
                                     statusText,
-                                    style: const TextStyle(
-                                      fontSize: 16,
+                                    style: TextStyle(
+                                      fontSize: 16 * _tableScale,
                                       fontWeight: FontWeight.w900,
                                       color: Colors.black,
                                     ),

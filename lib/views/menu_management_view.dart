@@ -15,6 +15,7 @@ class MenuManagementView extends StatefulWidget {
 class _MenuManagementViewState extends State<MenuManagementView> {
   late List<Product> _tempMenu;
   late List<String> _tempCategories;
+  late Map<String, bool> _tempCategorySettings;
   
   final ScrollController _productScrollController = ScrollController();
 
@@ -30,9 +31,11 @@ class _MenuManagementViewState extends State<MenuManagementView> {
     )).toList();
     
     _tempCategories = List.from(widget.controller.editableCategories);
+    _tempCategorySettings = Map.from(widget.controller.categoryPrintSettings);
   }
 
   void _saveAll() async {
+    await widget.controller.saveCategoryPrintSettings(_tempCategorySettings);
     await widget.controller.saveCategories(_tempCategories);
     await widget.controller.saveMenu(_tempMenu);
     
@@ -180,70 +183,98 @@ class _MenuManagementViewState extends State<MenuManagementView> {
   void _showCategoryDialog({String? category, int? index}) {
     final isEditing = category != null && index != null;
     final nameCtrl = TextEditingController(text: category ?? '');
+    
+    // Default olarak true (seçili) olacak
+    bool printToKitchen = isEditing 
+        ? (_tempCategorySettings[category] ?? true) 
+        : true;
 
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text(isEditing ? 'Kategori Düzenle' : 'Yeni Kategori Ekle'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Kategori Adı'),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(isEditing ? 'Kategori Düzenle' : 'Yeni Kategori Ekle'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Kategori Adı'),
+                  ),
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    title: const Text('Mutfağa yazdırılsın mı?'),
+                    value: printToKitchen,
+                    onChanged: (bool? value) {
+                      setDialogState(() {
+                        printToKitchen = value ?? true;
+                      });
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('İptal'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelMalachite, foregroundColor: Colors.white),
-              onPressed: () {
-                final name = nameCtrl.text.trim();
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('İptal'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelMalachite, foregroundColor: Colors.white),
+                  onPressed: () {
+                    final name = nameCtrl.text.trim();
 
-                if (name.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Lütfen geçerli kategori adı girin!'), backgroundColor: AppTheme.pastelRed),
-                  );
-                  return;
-                }
-                
-                if (_tempCategories.contains(name) && (!isEditing || _tempCategories[index] != name)) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Bu kategori zaten var!'), backgroundColor: AppTheme.pastelRed),
-                  );
-                  return;
-                }
-
-                setState(() {
-                  if (isEditing) {
-                    final oldName = _tempCategories[index];
-                    _tempCategories[index] = name;
-                    
-                    // Update products that use this category
-                    for (int i = 0; i < _tempMenu.length; i++) {
-                        if (_tempMenu[i].category == oldName) {
-                            _tempMenu[i] = Product(
-                                id: _tempMenu[i].id, 
-                                name: _tempMenu[i].name, 
-                                price: _tempMenu[i].price, 
-                                category: name
-                            );
-                        }
+                    if (name.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Lütfen geçerli kategori adı girin!'), backgroundColor: AppTheme.pastelRed),
+                      );
+                      return;
                     }
-                  } else {
-                    _tempCategories.add(name);
-                  }
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Kaydet'),
-            ),
-          ],
+                    
+                    if (_tempCategories.contains(name) && (!isEditing || _tempCategories[index] != name)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Bu kategori zaten var!'), backgroundColor: AppTheme.pastelRed),
+                      );
+                      return;
+                    }
+
+                    setState(() {
+                      if (isEditing) {
+                        final oldName = _tempCategories[index];
+                        _tempCategories[index] = name;
+                        
+                        // Eski ayarı sil, yenisini ekle
+                        if (oldName != name) {
+                          _tempCategorySettings.remove(oldName);
+                        }
+                        _tempCategorySettings[name] = printToKitchen;
+                        
+                        // Update products that use this category
+                        for (int i = 0; i < _tempMenu.length; i++) {
+                            if (_tempMenu[i].category == oldName) {
+                                _tempMenu[i] = Product(
+                                    id: _tempMenu[i].id, 
+                                    name: _tempMenu[i].name, 
+                                    price: _tempMenu[i].price, 
+                                    category: name
+                                );
+                            }
+                        }
+                      } else {
+                        _tempCategories.add(name);
+                        _tempCategorySettings[name] = printToKitchen;
+                      }
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Kaydet'),
+                ),
+              ],
+            );
+          }
         );
       },
     );

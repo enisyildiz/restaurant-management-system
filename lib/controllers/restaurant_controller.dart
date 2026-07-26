@@ -30,6 +30,7 @@ class RestaurantController extends ChangeNotifier {
   List<Product> _menu = [];
   bool isLoadingMenu = true;
   List<String> editableCategories = [];
+  Map<String, bool> categoryPrintSettings = {};
   List<Map<String, dynamic>> _offlineQueue = [];
   final Set<String> _processedEvents = {};
 
@@ -165,7 +166,19 @@ class RestaurantController extends ChangeNotifier {
       _showSnackbar('Menü sunucudan güncellendi.', false);
     } else if (action == 'sync_categories') {
       final remoteCatData = data['categories'] as List<dynamic>;
-      editableCategories = remoteCatData.map((e) => e.toString()).toList();
+      editableCategories = [];
+      categoryPrintSettings = {};
+      for (var item in remoteCatData) {
+        if (item is Map) {
+          final key = item.keys.first.toString();
+          editableCategories.add(key);
+          categoryPrintSettings[key] = item[key] as bool? ?? true;
+        } else if (item is String) {
+          editableCategories.add(item);
+          categoryPrintSettings[item] = true;
+        }
+      }
+      
       if (!editableCategories.contains(selectedCategory) && editableCategories.isNotEmpty) {
         selectedCategory = editableCategories.first;
       }
@@ -176,6 +189,10 @@ class RestaurantController extends ChangeNotifier {
       editableAreas = remoteAreaData.map((e) => e.toString()).toList();
       notifyListeners();
       _showSnackbar('Bölgeler sunucudan güncellendi.', false);
+    } else if (action == 'sync_category_settings') {
+      final remoteSettings = data['settings'] as Map<String, dynamic>;
+      categoryPrintSettings = remoteSettings.map((key, value) => MapEntry(key, value as bool));
+      notifyListeners();
     } else if (action == 'sync_tables') {
       final remoteTablesData = data['tables'] as List<dynamic>;
       final remoteTables = remoteTablesData.map((e) => TableModel.fromJson(e)).toList();
@@ -184,7 +201,8 @@ class RestaurantController extends ChangeNotifier {
       notifyListeners();
       _showSnackbar('Masalar sunucudan güncellendi.', false);
     } else if (action == 'add_product') {
-      addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true, orderItemId: data['orderItemId']);
+      final qty = data.containsKey('quantity') ? (data['quantity'] as num).toDouble() : 1.0;
+      addProductToTable(data['tableId'], Product.fromJson(data['product']), fromNetwork: true, orderItemId: data['orderItemId'], quantity: qty);
     } else if (action == 'remove_product') {
       removeProductFromTable(data['tableId'], data['orderItemId'], fromNetwork: true);
     } else if (action == 'set_product_quantity') {
@@ -398,14 +416,26 @@ class RestaurantController extends ChangeNotifier {
       if (await configFile.exists()) {
         final String response = await configFile.readAsString();
         final List<dynamic> data = json.decode(response);
-        editableCategories = data.map((e) => e.toString()).toList();
+        editableCategories = [];
+        categoryPrintSettings = {};
+        for (var item in data) {
+          if (item is Map) {
+            final key = item.keys.first.toString();
+            editableCategories.add(key);
+            categoryPrintSettings[key] = item[key] as bool? ?? true;
+          } else if (item is String) {
+            editableCategories.add(item);
+            categoryPrintSettings[item] = true;
+          }
+        }
       } else {
         editableCategories = [];
+        categoryPrintSettings = {};
         final Directory appDocDirFolder = Directory(p.dirname(configPath));
         if (!await appDocDirFolder.exists()) {
           await appDocDirFolder.create(recursive: true);
         }
-        await configFile.writeAsString(json.encode(editableCategories));
+        await configFile.writeAsString(json.encode([]));
       }
 
       if (selectedCategory.isEmpty || selectedCategory == 'Tümü') {
@@ -414,14 +444,55 @@ class RestaurantController extends ChangeNotifier {
         }
       }
       
+      // Delete old category_settings.json if it exists to clean up
+      final String printConfigPath = p.join(appDocDir.path, 'RestaurantApp', 'category_settings.json');
+      final File printConfigFile = File(printConfigPath);
+      if (await printConfigFile.exists()) {
+        try {
+          await printConfigFile.delete();
+        } catch (_) {}
+      }
+      
       notifyListeners();
     } catch (e) {
       LoggerService.instance.error('Kategoriler yüklenirken hata: $e');
     }
   }
 
+  Future<void> saveCategoryPrintSettings(Map<String, bool> newSettings) async {
+    categoryPrintSettings = newSettings;
+    notifyListeners();
+    try {
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'categories.json');
+      final File configFile = File(configPath);
+      
+      final Directory appDocDirFolder = Directory(p.dirname(configPath));
+      if (!await appDocDirFolder.exists()) {
+        await appDocDirFolder.create(recursive: true);
+      }
+      
+      final List<Map<String, bool>> combined = editableCategories.map((c) => {c: categoryPrintSettings[c] ?? true}).toList();
+      await configFile.writeAsString(json.encode(combined));
+      
+      if (_isAdminDevice && _networkService != null) {
+        _networkService!.sendMessage({
+          'action': 'sync_category_settings',
+          'settings': categoryPrintSettings,
+        });
+      }
+    } catch (e) {
+      LoggerService.instance.error('Kategori yazdırma ayarları kaydedilirken hata: $e');
+    }
+  }
+
   Future<void> saveCategories(List<String> newCategories) async {
     editableCategories = newCategories;
+    for (final cat in newCategories) {
+      if (!categoryPrintSettings.containsKey(cat)) {
+        categoryPrintSettings[cat] = true;
+      }
+    }
     notifyListeners();
 
     try {
@@ -429,13 +500,18 @@ class RestaurantController extends ChangeNotifier {
       final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'categories.json');
       final File configFile = File(configPath);
       
-      final String jsonStr = json.encode(editableCategories);
-      await configFile.writeAsString(jsonStr);
+      final Directory appDocDirFolder = Directory(p.dirname(configPath));
+      if (!await appDocDirFolder.exists()) {
+        await appDocDirFolder.create(recursive: true);
+      }
+
+      final List<Map<String, bool>> combined = editableCategories.map((c) => {c: categoryPrintSettings[c] ?? true}).toList();
+      await configFile.writeAsString(json.encode(combined));
 
       if (_isAdminDevice && _networkService != null) {
         _networkService!.sendMessage({
           'action': 'sync_categories',
-          'categories': editableCategories,
+          'categories': combined,
         });
       }
       
@@ -693,6 +769,7 @@ void addProductToTable(
   Product product, {
   bool fromNetwork = false,
   String? orderItemId,
+  double quantity = 1.0,
 }) {
   final table = tables.firstWhere((t) => t.id == tableId);
   final activeGroup = _getOrCreateActiveGroup(table);
@@ -700,6 +777,7 @@ void addProductToTable(
   final newItem = OrderItem(
     id: orderItemId,
     product: product,
+    quantity: quantity,
     orderTime: DateTime.now(),
   );
   activeGroup.items.add(newItem);
@@ -711,8 +789,8 @@ void addProductToTable(
     table: table,
     product: product,
     eventType: 'order_added',
-    quantityDelta: 1.0,
-    totalPrice: product.price,
+    quantityDelta: quantity,
+    totalPrice: product.price * quantity,
   );
 
   if (!fromNetwork && _networkService != null) {
@@ -721,6 +799,7 @@ void addProductToTable(
       'tableId': tableId,
       'product': product.toJson(),
       'orderItemId': newItem.id,
+      'quantity': quantity,
     };
     _queueAction(actionData);
   }
@@ -932,8 +1011,9 @@ void removeProductFromTable(
       }
       for (var group in unprintedGroups) {
         itemsToPrint.addAll(group.items.where((item) {
-          final kategori = item.product.category.toLowerCase();
-          return kategori != 'içecekler' && kategori != 'tatlılar';
+          final kategori = item.product.category;
+          // Eğer özel ayar varsa onu kullan, yoksa varsayılan olarak yazdır
+          return categoryPrintSettings[kategori] ?? true;
         }));
       }
     } else {
@@ -978,6 +1058,15 @@ void removeProductFromTable(
       final masaStyles = target == PrintTarget.kitchen 
         ? const PosStyles(align: PosAlign.left, bold: true, width: PosTextSize.size2, height: PosTextSize.size2)
         : const PosStyles(align: PosAlign.left, bold: true);
+
+      if (target == PrintTarget.kitchen) {
+        final timeStr = "${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+        bytes += generator.text(
+          'Siparis Saati: $timeStr',
+          styles: const PosStyles(align: PosAlign.left, bold: true, width: PosTextSize.size2, height: PosTextSize.size2)
+        );
+        bytes += generator.emptyLines(1);
+      }
 
       bytes += generator.text(
         'Masa: $safeTableName', 

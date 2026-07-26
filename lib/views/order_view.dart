@@ -5,8 +5,9 @@ import '../theme/theme.dart';
 import '../models/product.dart';
 import '../models/order_item.dart';
 import 'payment_view.dart';
+import 'widgets/numpad_widget.dart';
 
-class OrderView extends StatelessWidget {
+class OrderView extends StatefulWidget {
   final RestaurantController controller;
   final int tableId;
 
@@ -14,24 +15,40 @@ class OrderView extends StatelessWidget {
       : super(key: key);
 
   @override
+  State<OrderView> createState() => _OrderViewState();
+}
+
+class _OrderViewState extends State<OrderView> {
+  String _numpadValue = '0';
+
+  @override
   Widget build(BuildContext context) {
-    final table = controller.tables.firstWhere((t) => t.id == tableId);
+    final table = widget.controller.tables.firstWhere((t) => t.id == widget.tableId);
 
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        title: Text('Sipariş Ekranı - ${table.name}',
-            style: const TextStyle(color: AppTheme.textDark)),
-        backgroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: AppTheme.textDark),
-        elevation: 0,
-      ),
-      body: AnimatedBuilder(
-        animation: controller,
+    return WillPopScope(
+      onWillPop: () async {
+        final currentTable = widget.controller.tables.firstWhere((t) => t.id == widget.tableId, orElse: () => table);
+        final hasUnprinted = currentTable.orderGroups.any((g) => !g.isPrintedToKitchen && g.items.isNotEmpty);
+        if (hasUnprinted) {
+          widget.controller.printReceipt(widget.tableId, PrintTarget.kitchen);
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          title: Text('Sipariş Ekranı - ${table.name}',
+              style: const TextStyle(color: AppTheme.textDark)),
+          backgroundColor: Colors.white,
+          iconTheme: const IconThemeData(color: AppTheme.textDark),
+          elevation: 0,
+        ),
+        body: AnimatedBuilder(
+          animation: widget.controller,
         builder: (context, child) {
-          final table = controller.tables.firstWhere((t) => t.id == tableId);
+          final table = widget.controller.tables.firstWhere((t) => t.id == widget.tableId);
 
-          if (controller.isLoadingMenu) {
+          if (widget.controller.isLoadingMenu) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -40,21 +57,24 @@ class OrderView extends StatelessWidget {
               // SOL TARAF - KATEGORİLER VE ÜRÜNLER (Ekranın 3/5'ini kaplar)
               Expanded(
                 flex: 3,
-                child: Row(
+                child: Column(
                   children: [
-                    // 1. Kategori Listesi
-                    Container(
-                      width: 140, // Kategoriler için genişlik
-                      color: Colors.white,
-                      child: ListView.builder(
-                        itemCount: controller.categories.length,
-                        itemBuilder: (context, index) {
-                          final category = controller.categories[index];
-                          final isSelected =
-                              controller.selectedCategory == category;
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // 1. Kategori Listesi
+                          Container(
+                            width: 140, // Kategoriler için genişlik
+                            color: Colors.white,
+                            child: ListView.builder(
+                              itemCount: widget.controller.categories.length,
+                              itemBuilder: (context, index) {
+                                final category = widget.controller.categories[index];
+                                final isSelected =
+                                    widget.controller.selectedCategory == category;
 
                           return InkWell(
-                            onTap: () => controller.changeCategory(category),
+                            onTap: () => widget.controller.changeCategory(category),
                             child: Container(
                               color: isSelected
                                   ? AppTheme.pastelGreen.withOpacity(0.3)
@@ -93,12 +113,22 @@ class OrderView extends StatelessWidget {
                             mainAxisSpacing: 12,
                             childAspectRatio: 1.5,
                           ),
-                          itemCount: controller.filteredMenu.length,
+                          itemCount: widget.controller.filteredMenu.length,
                           itemBuilder: (context, index) {
-                            final product = controller.filteredMenu[index];
+                            final product = widget.controller.filteredMenu[index];
                             return InkWell(
-                              onTap: () => controller.addProductToTable(
-                                  tableId, product),
+                              onTap: () {
+                                final qty = double.tryParse(_numpadValue) ?? 0.0;
+                                if (qty > 0) {
+                                  widget.controller.addProductToTable(widget.tableId, product, quantity: qty);
+                                } else {
+                                  widget.controller.addProductToTable(widget.tableId, product);
+                                }
+                                
+                                setState(() {
+                                  _numpadValue = '0';
+                                });
+                              },
                               borderRadius: BorderRadius.circular(12),
                               child: Ink(
                                 decoration: BoxDecoration(
@@ -141,6 +171,21 @@ class OrderView extends StatelessWidget {
                   ],
                 ),
               ),
+              // NUMPAD WIDGET
+              Container(
+                color: Colors.white,
+                child: NumpadWidget(
+                  value: _numpadValue,
+                  onChanged: (val) {
+                    setState(() {
+                      _numpadValue = val;
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
 
               // SAĞ TARAF - ADİSYON (SİPARİŞ ÖZETİ) (Ekranın 2/5'ini kaplar)
               Container(width: 1, color: Colors.grey.withOpacity(0.2)),
@@ -158,116 +203,157 @@ class OrderView extends StatelessWidget {
                       ),
                       const Divider(height: 1),
                       Expanded(
-                        child: table.orders.isEmpty
+                        child: table.orderGroups.isEmpty
                             ? const Center(
                                 child: Text('Henüz sipariş girilmedi.'))
                             : ListView.builder(
-                                itemCount: table.orders.length,
-                                itemBuilder: (context, index) {
-                                  final orderItem = table.orders[index];
-                                  return InkWell(
-                                    onTap: () => _showNumpadDialog(context,
-                                        controller, tableId, orderItem),
-                                    child: ListTile(
-                                      title: Text(orderItem.product.name,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w600)),
-                                      subtitle: Text(
-                                          '${orderItem.product.price} ₺ x ${_formatQuantity(orderItem.quantity)}'),
-                                      trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (controller
-                                                  .currentUser?.role.name ==
-                                              'admin') ...[
-                                            IconButton(
-                                              icon: const Icon(
-                                                  Icons.remove_circle_outline,
-                                                  color: AppTheme.pastelRed),
-                                              onPressed: () {
-                                                showDialog(
-                                                  context: context,
-                                                  builder:
-                                                      (BuildContext context) {
-                                                    return AlertDialog(
-                                                      title: const Text(
-                                                          'Ürünü Sil'),
-                                                      content: Text(
-                                                          '${orderItem.product.name} siparişten tamamen silinecek. Emin misiniz?'),
-                                                      actions: [
-                                                        TextButton(
-                                                          onPressed: () =>
-                                                              Navigator.of(
-                                                                      context)
-                                                                  .pop(),
-                                                          child: const Text(
-                                                              'İptal',
-                                                              style: TextStyle(
-                                                                  color: AppTheme
-                                                                      .textMuted)),
-                                                        ),
-                                                        TextButton(
-                                                          onPressed: () {
-                                                            controller
-                                                                .removeProductFromTable(
-                                                                    tableId,
-                                                                    orderItem
-                                                                        .id);
-                                                            Navigator.of(
-                                                                    context)
-                                                                .pop();
-                                                          },
-                                                          child: const Text(
-                                                              'Evet, Sil',
-                                                              style: TextStyle(
-                                                                  color: AppTheme
-                                                                      .pastelRed,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold)),
-                                                        ),
-                                                      ],
-                                                    );
-                                                  },
-                                                );
-                                              },
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.edit,
-                                                  color: AppTheme.pastelBlue),
-                                              tooltip: 'Özel Fiyat Belirle',
-                                              onPressed: () =>
-                                                  _showCustomPriceDialog(
-                                                      context,
-                                                      controller,
-                                                      tableId,
-                                                      orderItem.product,
-                                                      table.customPrices[
-                                                          orderItem
-                                                              .product.id]),
-                                            ),
-                                          ],
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 16, vertical: 8),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.pastelGreen
-                                                  .withOpacity(0.3),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              _formatQuantity(
-                                                  orderItem.quantity),
-                                              style: const TextStyle(
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: AppTheme.textDark),
-                                            ),
-                                          ),
-                                        ],
+                                itemCount: table.orderGroups.length,
+                                itemBuilder: (context, groupIndex) {
+                                  final group = table.orderGroups[groupIndex];
+                                  if (group.items.isEmpty) return const SizedBox.shrink();
+
+                                  final timeStr = "${group.createdAt.hour.toString().padLeft(2, '0')}:${group.createdAt.minute.toString().padLeft(2, '0')}";
+
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                        child: Text(
+                                          'Sipariş Saati: $timeStr',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryDark),
+                                        ),
                                       ),
-                                    ),
+                                      ListView.builder(
+                                        shrinkWrap: true,
+                                        physics: const NeverScrollableScrollPhysics(),
+                                        itemCount: group.items.length,
+                                        itemBuilder: (context, index) {
+                                          final orderItem = group.items[index];
+                                              final effectivePrice = table.customPrices[orderItem.product.id] ?? orderItem.product.price;
+                                              return InkWell(
+                                                onTap: () {
+                                                  final qty = double.tryParse(_numpadValue) ?? 0.0;
+                                                  if (qty > 0) {
+                                                    widget.controller.setProductQuantity(widget.tableId, orderItem.id, qty);
+                                                    setState(() {
+                                                      _numpadValue = '0';
+                                                    });
+                                                  } else {
+                                                    _showNumpadDialog(context, widget.controller, widget.tableId, orderItem);
+                                                  }
+                                                },
+                                                child: ListTile(
+                                                  title: Text(orderItem.product.name,
+                                                      style: const TextStyle(
+                                                          fontWeight: FontWeight.w600)),
+                                                  subtitle: Text(
+                                                      '${effectivePrice.toStringAsFixed(2)} ₺ x ${_formatQuantity(orderItem.quantity)}'),
+                                                  trailing: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (widget.controller.currentUser?.role.name == 'admin') ...[
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                          Icons.remove_circle_outline,
+                                                          color: AppTheme.pastelRed),
+                                                      onPressed: () {
+                                                        showDialog(
+                                                          context: context,
+                                                          builder:
+                                                              (BuildContext context) {
+                                                            return AlertDialog(
+                                                              title: const Text(
+                                                                  'Ürünü Sil'),
+                                                              content: Text(
+                                                                  '${orderItem.product.name} siparişten tamamen silinecek. Emin misiniz?'),
+                                                              actions: [
+                                                                TextButton(
+                                                                  onPressed: () =>
+                                                                      Navigator.of(
+                                                                              context)
+                                                                          .pop(),
+                                                                  child: const Text(
+                                                                      'İptal',
+                                                                      style: TextStyle(
+                                                                          color: AppTheme
+                                                                              .textMuted)),
+                                                                ),
+                                                                TextButton(
+                                                                  onPressed: () {
+                                                                    widget.controller
+                                                                        .removeProductFromTable(
+                                                                            widget.tableId,
+                                                                            orderItem
+                                                                                .id);
+                                                                    Navigator.of(
+                                                                            context)
+                                                                        .pop();
+                                                                  },
+                                                                  child: const Text(
+                                                                      'Evet, Sil',
+                                                                      style: TextStyle(
+                                                                          color: AppTheme
+                                                                              .pastelRed,
+                                                                          fontWeight:
+                                                                              FontWeight
+                                                                                  .bold)),
+                                                                ),
+                                                              ],
+                                                            );
+                                                          },
+                                                        );
+                                                      },
+                                                    ),
+                                                    IconButton(
+                                                      icon: const Icon(Icons.edit,
+                                                          color: AppTheme.pastelBlue),
+                                                      tooltip: 'Özel Fiyat Belirle',
+                                                      onPressed: () {
+                                                        final price = double.tryParse(_numpadValue) ?? 0.0;
+                                                        if (price > 0) {
+                                                          widget.controller.setCustomPrice(widget.tableId, orderItem.product.id, price);
+                                                          setState(() {
+                                                            _numpadValue = '0';
+                                                          });
+                                                        } else {
+                                                          _showCustomPriceDialog(
+                                                              context,
+                                                              widget.controller,
+                                                              widget.tableId,
+                                                              orderItem.product,
+                                                              table.customPrices[
+                                                                  orderItem
+                                                                      .product.id]);
+                                                        }
+                                                      },
+                                                    ),
+                                                  ],
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(
+                                                        horizontal: 16, vertical: 8),
+                                                    decoration: BoxDecoration(
+                                                      color: AppTheme.pastelGreen
+                                                          .withOpacity(0.3),
+                                                      borderRadius:
+                                                          BorderRadius.circular(8),
+                                                    ),
+                                                    child: Text(
+                                                      _formatQuantity(
+                                                          orderItem.quantity),
+                                                      style: const TextStyle(
+                                                          fontSize: 20,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: AppTheme.textDark),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
                                   );
                                 },
                               ),
@@ -316,8 +402,8 @@ class OrderView extends StatelessWidget {
                                           ? null
                                           : () async {
                                               final success =
-                                                  await controller.printReceipt(
-                                                      tableId,
+                                                  await widget.controller.printReceipt(
+                                                      widget.tableId,
                                                       PrintTarget.kitchen);
                                               if (success && context.mounted) {
                                                 ScaffoldMessenger.of(context)
@@ -351,8 +437,8 @@ class OrderView extends StatelessWidget {
                                           ? null
                                           : () async {
                                               final success =
-                                                  await controller.printReceipt(
-                                                      tableId,
+                                                  await widget.controller.printReceipt(
+                                                      widget.tableId,
                                                       PrintTarget.cashier);
                                               if (success && context.mounted) {
                                                 ScaffoldMessenger.of(context)
@@ -372,8 +458,10 @@ class OrderView extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            if (controller.currentUser?.role.name ==
-                                'admin') ...[
+                            if (widget.controller.currentUser?.role.name ==
+                                    'admin' ||
+                                widget.controller.currentUser?.role.name ==
+                                    'superadmin') ...[
                               const SizedBox(height: 16),
                               Row(
                                 children: [
@@ -392,7 +480,9 @@ class OrderView extends StatelessWidget {
                                             ? null
                                             : () {
                                                 _showMoveTableDialog(
-                                                    context, controller, table);
+                                                    context,
+                                                    widget.controller,
+                                                    table);
                                               },
                                         child: const Text('Masayı Taşı',
                                             style: TextStyle(
@@ -422,8 +512,9 @@ class OrderView extends StatelessWidget {
                                                   context,
                                                   MaterialPageRoute(
                                                     builder: (_) => PaymentView(
-                                                      controller: controller,
-                                                      tableId: tableId,
+                                                      controller:
+                                                          widget.controller,
+                                                      tableId: widget.tableId,
                                                     ),
                                                   ),
                                                 );
@@ -454,6 +545,7 @@ class OrderView extends StatelessWidget {
           );
         },
       ),
+    ),
     );
   }
 
