@@ -2217,6 +2217,8 @@ class _AnalyticsLogPageState extends State<_AnalyticsLogPage> {
   List<Map<String, dynamic>> topProducts = [];
   List<Map<String, dynamic>> topProductsByRevenue = [];
   List<Map<String, dynamic>> categoryRevenue = [];
+  double dailyTotalQuantity = 0.0;
+  double dailyTotalRevenueAmount = 0.0;
 
   @override
   void initState() {
@@ -2261,6 +2263,15 @@ productsByRevenue.sort((a, b) {
 });
     final categories = await DatabaseService.instance.getTodaysCategoryRevenue();
 
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day);
+    final end = start.add(const Duration(days: 1));
+    final totalMetrics = 
+        await DatabaseService.instance.getTotalSalesMetricsBetween(
+      start: start,
+      end: end,
+    );
+
     if (!mounted) return;
 
     setState(() {
@@ -2269,6 +2280,8 @@ productsByRevenue.sort((a, b) {
       topProducts = products.take(20).toList();
       topProductsByRevenue = productsByRevenue.take(20).toList();
       categoryRevenue = categories;
+      dailyTotalQuantity = totalMetrics['total_quantity'] ?? 0.0;
+      dailyTotalRevenueAmount = totalMetrics['total_revenue'] ?? 0.0;
       isLoading = false;
     });
   }
@@ -2342,6 +2355,8 @@ productsByRevenue.sort((a, b) {
                   child: _TopProductsList(
                     data: topProducts,
                     emphasizeQuantity: true,
+                    totalRestaurantQuantity: dailyTotalQuantity,
+                    totalRestaurantRevenue: dailyTotalRevenueAmount,
                   ),
                 ),
                 _AnalyticsCard(
@@ -2350,6 +2365,8 @@ productsByRevenue.sort((a, b) {
                   child: _TopProductsList(
                     data: topProductsByRevenue,
                     emphasizeQuantity: false,
+                    totalRestaurantQuantity: dailyTotalQuantity,
+                    totalRestaurantRevenue: dailyTotalRevenueAmount,
                   ),
                 ),
                 _AnalyticsCard(
@@ -2773,10 +2790,14 @@ class _PaymentEventsList extends StatelessWidget {
 class _TopProductsList extends StatelessWidget {
   final List<Map<String, dynamic>> data;
   final bool emphasizeQuantity;
+  final double totalRestaurantQuantity;
+  final double totalRestaurantRevenue;
 
   const _TopProductsList({
     required this.data,
     required this.emphasizeQuantity,
+    this.totalRestaurantQuantity = 0.0,
+    this.totalRestaurantRevenue = 0.0,
   });
 
   @override
@@ -2785,15 +2806,19 @@ class _TopProductsList extends StatelessWidget {
       return const Center(child: Text('Bugün ürün satışı yok.'));
     }
 
-    final totalQuantity = data.fold<double>(
-      0,
-      (sum, item) => sum + _toDouble(item['total_quantity']),
-    );
+    final totalQuantity = totalRestaurantQuantity > 0 
+        ? totalRestaurantQuantity 
+        : data.fold<double>(
+            0,
+            (sum, item) => sum + _toDouble(item['total_quantity']),
+          );
 
-    final totalRevenue = data.fold<double>(
-      0,
-      (sum, item) => sum + _toDouble(item['total_revenue']),
-    );
+    final totalRevenue = totalRestaurantRevenue > 0
+        ? totalRestaurantRevenue
+        : data.fold<double>(
+            0,
+            (sum, item) => sum + _toDouble(item['total_revenue']),
+          );
 
     return ListView.builder(
       itemCount: data.length,
@@ -3020,6 +3045,8 @@ class _WeeklySalesDataPageState extends State<_WeeklySalesDataPage> {
   List<_DailyMetricPoint> averageTableOrder = [];
   List<Map<String, dynamic>> weeklyProductSales = [];
   List<Map<String, dynamic>> weeklyCategoryRevenue = [];
+  double weeklyTotalQuantity = 0.0;
+  double weeklyTotalRevenueAmount = 0.0;
 
   @override
   void initState() {
@@ -3132,6 +3159,12 @@ class _WeeklySalesDataPageState extends State<_WeeklySalesDataPage> {
       end: end,
     );
 
+    final totalMetrics = 
+        await DatabaseService.instance.getTotalSalesMetricsBetween(
+      start: start,
+      end: end,
+    );
+
     final revenuePoints = _buildDailyPoints(
       start: start,
       rows: revenueRows,
@@ -3153,6 +3186,8 @@ class _WeeklySalesDataPageState extends State<_WeeklySalesDataPage> {
       averageTableOrder = avgOrderPoints;
       weeklyProductSales = products;
       weeklyCategoryRevenue = categories;
+      weeklyTotalQuantity = totalMetrics['total_quantity'] ?? 0.0;
+      weeklyTotalRevenueAmount = totalMetrics['total_revenue'] ?? 0.0;
       lastUpdated = now;
       isLoading = false;
     });
@@ -3255,7 +3290,7 @@ Widget build(BuildContext context) {
                 summaryValue: _formatMoneyLarge(weeklyTotal),
                 points: weeklyRevenue,
                 lineColor: AppTheme.primary,
-                valueFormatter: _formatMoneyCompact,
+                valueFormatter: _formatMoney,
               ),
             ),
 
@@ -3272,6 +3307,8 @@ Widget build(BuildContext context) {
                       child: _TopProductsList(
                         data: weeklyProductSales,
                         emphasizeQuantity: false,
+                        totalRestaurantQuantity: weeklyTotalQuantity,
+                        totalRestaurantRevenue: weeklyTotalRevenueAmount,
                       ),
                     ),
                   ),
@@ -3300,6 +3337,8 @@ Widget build(BuildContext context) {
                         child: _TopProductsList(
                           data: weeklyProductSales,
                           emphasizeQuantity: false,
+                          totalRestaurantQuantity: weeklyTotalQuantity,
+                          totalRestaurantRevenue: weeklyTotalRevenueAmount,
                         ),
                       ),
                     ),

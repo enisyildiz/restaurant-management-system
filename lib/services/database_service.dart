@@ -976,30 +976,7 @@ Future<List<Map<String, dynamic>>> getTodaysProductSales({
   final start = DateTime(now.year, now.month, now.day);
   final end = start.add(const Duration(days: 1));
 
-  final db = await instance.database;
-
-  return db.rawQuery(
-    '''
-    SELECT
-      product_id,
-      product_name,
-      product_category,
-      SUM(quantity_delta) AS total_quantity,
-      SUM(total_price) AS total_revenue
-    FROM order_events
-    WHERE created_at >= ?
-      AND created_at < ?
-      AND event_type IN ('order_added', 'item_removed')
-    GROUP BY product_id, product_name, product_category
-    HAVING SUM(quantity_delta) > 0 OR SUM(total_price) > 0
-    LIMIT ?
-    ''',
-    [
-      start.toIso8601String(),
-      end.toIso8601String(),
-      limit,
-    ],
-  );
+  return getProductSalesBetween(start: start, end: end, limit: limit);
 }
 Future<void> updateActiveSessionTableInfo({
   required int sessionId,
@@ -1086,11 +1063,10 @@ Future<List<Map<String, dynamic>>> getDailyBusinessRevenueRowsBetween({
     '''
     SELECT
       substr(created_at, 1, 10) AS day,
-      SUM(total_price) AS total_revenue
-    FROM order_events
+      COALESCE(SUM(amount), 0) AS total_revenue
+    FROM payment_events
     WHERE created_at >= ?
       AND created_at < ?
-      AND event_type IN ('order_added', 'item_removed')
     GROUP BY substr(created_at, 1, 10)
     ORDER BY day ASC
     ''',
@@ -1105,24 +1081,29 @@ Future<List<Map<String, dynamic>>> getProductSalesBetween({
   required DateTime start,
   required DateTime end,
   int limit = 100,
+  bool orderByQuantity = false,
 }) async {
   final db = await instance.database;
+
+  final orderByClause = orderByQuantity ? 'total_quantity DESC' : 'total_revenue DESC';
 
   return db.rawQuery(
     '''
     SELECT
-      product_id,
-      product_name,
-      product_category,
-      SUM(quantity_delta) AS total_quantity,
-      SUM(total_price) AS total_revenue
-    FROM order_events
-    WHERE created_at >= ?
-      AND created_at < ?
-      AND event_type IN ('order_added', 'item_removed')
-    GROUP BY product_id, product_name, product_category
-    HAVING SUM(quantity_delta) > 0 OR SUM(total_price) > 0
-    ORDER BY total_revenue DESC
+      oe.product_id,
+      oe.product_name,
+      oe.product_category,
+      SUM(oe.quantity_delta) AS total_quantity,
+      SUM(oe.total_price) AS total_revenue
+    FROM order_events oe
+    INNER JOIN table_sessions ts ON oe.session_id = ts.id
+    WHERE oe.created_at >= ?
+      AND oe.created_at < ?
+      AND oe.event_type IN ('order_added', 'item_removed')
+      AND ts.status = 'closed'
+    GROUP BY oe.product_id, oe.product_name, oe.product_category
+    HAVING SUM(oe.quantity_delta) > 0 OR SUM(oe.total_price) > 0
+    ORDER BY $orderByClause
     LIMIT ?
     ''',
     [
@@ -1131,6 +1112,41 @@ Future<List<Map<String, dynamic>>> getProductSalesBetween({
       limit,
     ],
   );
+}
+
+Future<Map<String, double>> getTotalSalesMetricsBetween({
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
+
+  final result = await db.rawQuery(
+    '''
+    SELECT
+      SUM(oe.quantity_delta) AS total_quantity,
+      SUM(oe.total_price) AS total_revenue
+    FROM order_events oe
+    INNER JOIN table_sessions ts ON oe.session_id = ts.id
+    WHERE oe.created_at >= ?
+      AND oe.created_at < ?
+      AND oe.event_type IN ('order_added', 'item_removed')
+      AND ts.status = 'closed'
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+
+  if (result.isEmpty) {
+    return {'total_quantity': 0.0, 'total_revenue': 0.0};
+  }
+
+  final row = result.first;
+  final qty = (row['total_quantity'] as num?)?.toDouble() ?? 0.0;
+  final rev = (row['total_revenue'] as num?)?.toDouble() ?? 0.0;
+
+  return {'total_quantity': qty, 'total_revenue': rev};
 }
 
 Future<List<Map<String, dynamic>>> getAverageTableOrderByDayBetween({
