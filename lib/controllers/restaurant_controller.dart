@@ -216,7 +216,17 @@ class RestaurantController extends ChangeNotifier {
       final method = PaymentMethod.values.firstWhere((e) => e.toString() == methodStr);
       addPaymentToTable(tableId: data['tableId'], amount: data['amount'], method: method, fromNetwork: true);
     } else if (action == 'set_custom_price') {
-      setCustomPrice(data['tableId'], data['productId'], (data['price'] as num).toDouble(), fromNetwork: true);
+      setCustomPrice(
+        data['tableId'],
+        data['productId'],
+        (data['price'] as num).toDouble(),
+        fromNetwork: true,
+      );
+    } else if (action == 'mark_table_asked_for_check') {
+      markTableAskedForCheck(
+        data['tableId'],
+        fromNetwork: true,
+      );
     }
 
     if (eventId != null && currentUser?.role.name == 'admin') {
@@ -325,6 +335,30 @@ class RestaurantController extends ChangeNotifier {
       _showSnackbar('Masalar başarıyla kaydedildi.', false);
     } catch (e) {
       _showSnackbar('Masalar kaydedilirken hata oluştu: $e', true);
+    }
+  }
+
+  void markTableAskedForCheck(
+    int tableId, {
+    bool fromNetwork = false,
+  }) {
+    final index = tables.indexWhere((t) => t.id == tableId);
+
+    if (index == -1) return;
+    if (tables[index].orders.isEmpty) return;
+
+    tables[index].status = TableStatus.askedForCheck;
+
+    notifyListeners();
+    _saveTablesSilent();
+
+    if (!fromNetwork && _networkService != null) {
+      final actionData = {
+        'action': 'mark_table_asked_for_check',
+        'tableId': tableId,
+      };
+
+      _queueAction(actionData);
     }
   }
 
@@ -1005,20 +1039,41 @@ void removeProductFromTable(
     List<OrderGroup> unprintedGroups = [];
 
     if (target == PrintTarget.kitchen) {
-      unprintedGroups = table.orderGroups.where((g) => !g.isPrintedToKitchen && g.items.isNotEmpty).toList();
-      if (unprintedGroups.isEmpty) {
-        return false; 
-      }
-      for (var group in unprintedGroups) {
-        itemsToPrint.addAll(group.items.where((item) {
-          final kategori = item.product.category;
-          // Eğer özel ayar varsa onu kullan, yoksa varsayılan olarak yazdır
-          return categoryPrintSettings[kategori] ?? true;
-        }));
-      }
-    } else {
-      itemsToPrint = table.orders;
+    unprintedGroups = table.orderGroups
+        .where((g) => !g.isPrintedToKitchen && g.items.isNotEmpty)
+        .toList();
+
+    if (unprintedGroups.isEmpty) {
+      return false;
     }
+
+    for (var group in unprintedGroups) {
+      itemsToPrint.addAll(
+        group.items.where((item) {
+          final kategori = item.product.category;
+          return categoryPrintSettings[kategori] ?? true;
+        }),
+      );
+    }
+
+    // Important:
+    // If this group only contains non-kitchen-print categories
+    // like drinks, do NOT print a blank kitchen ticket.
+    // But still lock/finalize the group so waiter cannot delete it later.
+    if (itemsToPrint.isEmpty) {
+      for (var group in unprintedGroups) {
+        group.isPrintedToKitchen = true;
+      }
+
+      notifyListeners();
+      _syncFullState();
+      unawaited(_saveTablesSilent());
+
+      return true;
+    }
+  } else {
+    itemsToPrint = table.orders;
+  }
 
     try {
       selectedPrinter = printers.firstWhere((pName) {

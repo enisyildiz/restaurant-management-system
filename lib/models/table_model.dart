@@ -3,7 +3,7 @@ import 'order_item.dart';
 import 'payment_record.dart';
 import 'product.dart';
 
-enum TableStatus { empty, occupied }
+enum TableStatus { empty, occupied, askedForCheck }
 
 class TableModel {
   final int id;

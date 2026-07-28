@@ -5,6 +5,8 @@ import '../models/user_role.dart';
 import '../theme/theme.dart';
 import 'order_view.dart';
 import 'login_view.dart';
+import '../services/database_service.dart';
+
 
 class TableView extends StatefulWidget {
   final RestaurantController controller;
@@ -16,7 +18,36 @@ class TableView extends StatefulWidget {
 }
 
 class _TableViewState extends State<TableView> {
-  double _tableScale = 1.0;
+  static const String _tableScaleSettingKey = 'table_view_scale';
+  static const double _defaultTableScale = 1.0;
+
+  double _tableScale = _defaultTableScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedTableScale();
+  }
+
+  Future<void> _loadSavedTableScale() async {
+    final savedScale = await DatabaseService.instance.getDoubleSetting(
+      key: _tableScaleSettingKey,
+      defaultValue: _defaultTableScale,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _tableScale = savedScale.clamp(0.5, 2.0).toDouble();
+    });
+  }
+
+  Future<void> _saveTableScale(double value) async {
+    await DatabaseService.instance.setDoubleSetting(
+      key: _tableScaleSettingKey,
+      value: value.clamp(0.5, 2.0).toDouble(),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +87,16 @@ class _TableViewState extends State<TableView> {
                           value: _tableScale,
                           min: 0.5,
                           max: 2.0,
+                          divisions: 15,
+                          label: '${(_tableScale * 100).round()}%',
                           activeColor: AppTheme.primary,
                           onChanged: (val) {
                             setState(() {
                               _tableScale = val;
                             });
+                          },
+                          onChangeEnd: (val) {
+                            _saveTableScale(val);
                           },
                         ),
                       ),
@@ -101,20 +137,28 @@ class _TableViewState extends State<TableView> {
                         runSpacing: 20,
                         alignment: WrapAlignment.start,
                         children: areaTables.map((table) {
-                          final isEmpty = table.status == TableStatus.empty;
-
                           Color bgColor;
                           Color borderColor;
                           String statusText;
 
-                          if (isEmpty) {
-                            bgColor = AppTheme.pastelGreen;
-                            borderColor = AppTheme.pastelGreen;
-                            statusText = 'BOŞ';
-                          } else {
-                            bgColor = AppTheme.pastelOrange;
-                            borderColor = AppTheme.pastelOrange;
-                            statusText = 'DOLU';
+                          switch (table.status) {
+                            case TableStatus.empty:
+                              bgColor = AppTheme.pastelGreen;
+                              borderColor = AppTheme.pastelGreen;
+                              statusText = 'BOŞ';
+                              break;
+
+                            case TableStatus.occupied:
+                              bgColor = AppTheme.pastelOrange;
+                              borderColor = AppTheme.pastelOrange;
+                              statusText = 'DOLU';
+                              break;
+
+                            case TableStatus.askedForCheck:
+                              bgColor = Colors.pink.shade400;
+                              borderColor = Colors.pink.shade500;
+                              statusText = 'HESAP';
+                              break;
                           }
 
                           return GestureDetector(

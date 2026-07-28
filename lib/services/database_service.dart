@@ -1413,4 +1413,57 @@ Future<void> ensureCashRegisterSchema() async {
   await _seedDefaultExpenseReasons(db);
   await _seedDefaultExpensePaymentMethods(db);
 }
+
+Future<void> ensureAppSettingsTable() async {
+  final db = await instance.database;
+
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  ''');
+}
+
+Future<double> getDoubleSetting({
+  required String key,
+  required double defaultValue,
+}) async {
+  final db = await instance.database;
+
+  await ensureAppSettingsTable();
+
+  final result = await db.query(
+    'app_settings',
+    where: 'key = ?',
+    whereArgs: [key],
+    limit: 1,
+  );
+
+  if (result.isEmpty) {
+    return defaultValue;
+  }
+
+  return double.tryParse(result.first['value'].toString()) ?? defaultValue;
+}
+
+Future<void> setDoubleSetting({
+  required String key,
+  required double value,
+}) async {
+  final db = await instance.database;
+
+  await ensureAppSettingsTable();
+
+  await db.insert(
+    'app_settings',
+    {
+      'key': key,
+      'value': value.toString(),
+      'updated_at': DateTime.now().toIso8601String(),
+    },
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+}
 }
