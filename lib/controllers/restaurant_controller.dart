@@ -1379,15 +1379,39 @@ void removeProductFromTable(
   }
 
   void _showSnackbar(String message, bool isFailed) {
-    globalMessengerKey.currentState?.showSnackBar(
+  final context = globalMessengerKey.currentContext;
+  final mediaQuery = context == null ? null : MediaQuery.maybeOf(context);
+
+  final screenHeight = mediaQuery?.size.height ?? 800.0;
+  final topPadding = mediaQuery?.padding.top ?? 0.0;
+
+  // SnackBar is normally bottom-positioned.
+  // A large bottom margin moves it near the top of the screen.
+  final bottomMargin = math.max(
+    16.0,
+    screenHeight - topPadding - 95.0,
+  );
+
+  globalMessengerKey.currentState
+    ?..removeCurrentSnackBar()
+    ..showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: isFailed ? Colors.red.shade800 : Colors.green.shade800,
-        duration: const Duration(seconds: 5),
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor:
+            isFailed ? Colors.red.shade800 : Colors.green.shade800,
+        duration: Duration(seconds: isFailed ? 4 : 2),
         behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          bottom: bottomMargin,
+        ),
       ),
     );
-  }
+}
 
 
 
