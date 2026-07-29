@@ -33,6 +33,7 @@ class RestaurantController extends ChangeNotifier {
   Map<String, bool> categoryPrintSettings = {};
   List<Map<String, dynamic>> _offlineQueue = [];
   final Set<String> _processedEvents = {};
+  final Map<int, Set<String>> _pendingFinalizedKitchenItemIds = {};
 
   String _generateEventId() {
     final random = math.Random();
@@ -212,24 +213,38 @@ class RestaurantController extends ChangeNotifier {
     } else if (action == 'move_table') {
       moveTable(data['currentTableId'], data['targetTableId'], fromNetwork: true);
     } else if (action == 'add_payment') {
-      final methodStr = data['method'];
-      final method = PaymentMethod.values.firstWhere((e) => e.toString() == methodStr);
-      addPaymentToTable(tableId: data['tableId'], amount: data['amount'], method: method, fromNetwork: true);
-    } else if (action == 'set_custom_price') {
-      setCustomPrice(
-        data['tableId'],
-        data['productId'],
-        (data['price'] as num).toDouble(),
-        fromNetwork: true,
-      );
-    } else if (action == 'mark_table_asked_for_check') {
-      markTableAskedForCheck(
-        data['tableId'],
-        fromNetwork: true,
-      );
-    }
+  final methodStr = data['method'];
+  final method = PaymentMethod.values.firstWhere(
+    (e) => e.toString() == methodStr,
+  );
 
-    if (eventId != null && currentUser?.role.name == 'admin') {
+  addPaymentToTable(
+    tableId: data['tableId'],
+    amount: data['amount'],
+    method: method,
+    fromNetwork: true,
+  );
+} else if (action == 'set_custom_price') {
+  setCustomPrice(
+    data['tableId'],
+    data['productId'],
+    (data['price'] as num).toDouble(),
+    fromNetwork: true,
+  );
+} else if (action == 'finalize_kitchen_order_items') {
+  final rawIds = data['orderItemIds'] as List<dynamic>? ?? [];
+
+  finalizeKitchenOrderItems(
+    data['tableId'],
+    rawIds.map((e) => e.toString()).toList(),
+    fromNetwork: true,
+  );
+} else if (action == 'mark_table_asked_for_check') {
+  markTableAskedForCheck(
+    data['tableId'],
+    fromNetwork: true,
+  );
+} if (eventId != null && currentUser?.role.name == 'admin') {
       _networkService?.sendMessage({'action': 'ack', 'eventId': eventId});
     }
   }
@@ -798,6 +813,68 @@ OrderGroup _getOrCreateActiveGroup(TableModel table) {
   return table.orderGroups.last;
 }
 
+void finalizeKitchenOrderItems(
+  int tableId,
+  List<String> orderItemIds, {
+  bool fromNetwork = false,
+}) {
+  if (orderItemIds.isEmpty) return;
+
+  final tableIndex = tables.indexWhere((t) => t.id == tableId);
+  if (tableIndex == -1) return;
+
+  final table = tables[tableIndex];
+  final idsToFinalize = orderItemIds.toSet();
+  final foundIds = <String>{};
+
+  bool changed = false;
+
+  for (final group in table.orderGroups) {
+    final groupContainsFinalizedItem = group.items.any((item) {
+      final contains = idsToFinalize.contains(item.id);
+
+      if (contains) {
+        foundIds.add(item.id);
+      }
+
+      return contains;
+    });
+
+    if (groupContainsFinalizedItem && !group.isPrintedToKitchen) {
+      group.isPrintedToKitchen = true;
+      changed = true;
+    }
+  }
+
+  // If the finalize message arrived before the product-add message,
+  // remember those IDs and finalize them when the product arrives.
+  final missingIds = idsToFinalize.difference(foundIds);
+
+  if (fromNetwork && missingIds.isNotEmpty) {
+    final pendingForTable = _pendingFinalizedKitchenItemIds.putIfAbsent(
+      tableId,
+      () => <String>{},
+    );
+
+    pendingForTable.addAll(missingIds);
+  }
+
+  if (changed) {
+    notifyListeners();
+    _saveTablesSilent();
+  }
+
+  if (!fromNetwork && _networkService != null) {
+    final actionData = {
+      'action': 'finalize_kitchen_order_items',
+      'tableId': tableId,
+      'orderItemIds': orderItemIds,
+    };
+
+    _queueAction(actionData);
+  }
+}
+
 void addProductToTable(
   int tableId,
   Product product, {
@@ -816,8 +893,18 @@ void addProductToTable(
   );
   activeGroup.items.add(newItem);
 
-  table.status = TableStatus.occupied;
-  table.seatedAt ??= DateTime.now();
+  final pendingForTable = _pendingFinalizedKitchenItemIds[tableId];
+
+  if (pendingForTable != null && pendingForTable.remove(newItem.id)) {
+    activeGroup.isPrintedToKitchen = true;
+
+    if (pendingForTable.isEmpty) {
+      _pendingFinalizedKitchenItemIds.remove(tableId);
+    }
+  }
+
+table.status = TableStatus.occupied;
+table.seatedAt ??= DateTime.now();
 
   _logOrderEventIfAdmin(
     table: table,
@@ -988,6 +1075,77 @@ void removeProductFromTable(
     _saveTablesSilent();
   }
 
+  List<int> _cashierReceiptLine({
+  required Generator generator,
+  required String leftText,
+  required String rightText,
+}) {
+  const int lineWidth = 42;
+
+  final safeLeft = _replaceTurkishChars(leftText);
+  final safeRight = _replaceTurkishChars(rightText);
+
+  if (safeLeft.length + safeRight.length + 1 <= lineWidth) {
+    final spaces = lineWidth - safeLeft.length - safeRight.length;
+    return generator.text(
+      '$safeLeft${' ' * spaces}$safeRight',
+      styles: const PosStyles(
+        align: PosAlign.left,
+      ),
+    );
+  }
+
+  final bytes = <int>[];
+
+  bytes.addAll(
+    generator.text(
+      safeLeft,
+      styles: const PosStyles(
+        align: PosAlign.left,
+      ),
+    ),
+  );
+
+  bytes.addAll(
+    generator.text(
+      safeRight,
+      styles: const PosStyles(
+        align: PosAlign.right,
+      ),
+    ),
+  );
+
+  return bytes;
+}
+
+  List<OrderItem> _mergeItemsForPrint(List<OrderItem> items) {
+  final Map<String, OrderItem> merged = {};
+
+  for (final item in items) {
+    final key = [
+      item.product.id,
+      item.product.name,
+      item.product.category,
+      item.product.price.toStringAsFixed(2),
+    ].join('|');
+
+    final existing = merged[key];
+
+    if (existing == null) {
+      merged[key] = OrderItem(
+        id: item.id,
+        product: item.product,
+        quantity: item.quantity,
+        orderTime: item.orderTime,
+      );
+    } else {
+      existing.quantity += item.quantity;
+    }
+  }
+
+  return merged.values.toList();
+}
+
   String _replaceTurkishChars(String text) {
     var s = text
         .replaceAll('İ', 'I') // İ
@@ -1025,7 +1183,11 @@ void removeProductFromTable(
     return sb.toString();
   }
 
-  Future<bool> printReceipt(int tableId, PrintTarget target) async {
+  Future<bool> printReceipt(
+  int tableId,
+  PrintTarget target, {
+  Set<String>? onlyOrderItemIds,
+}) async {
     final table = tables.firstWhere((t) => t.id == tableId);
     
     // Windows printer api via PrintService
@@ -1035,45 +1197,73 @@ void removeProductFromTable(
 
     if (table.orderGroups.isEmpty) return false;
 
+    // Safety rule:
+    // Kitchen printing should only happen for known current-session item IDs.
+    // This prevents accidental full-table reprints.
+    if (target == PrintTarget.kitchen &&
+        (onlyOrderItemIds == null || onlyOrderItemIds.isEmpty)) {
+      _showSnackbar(
+        'Güvenlik: Yeni ürün olmadan mutfak yazdırma engellendi.',
+        true,
+      );
+      return false;
+    }
+
     List<OrderItem> itemsToPrint = [];
     List<OrderGroup> unprintedGroups = [];
 
     if (target == PrintTarget.kitchen) {
-    unprintedGroups = table.orderGroups
-        .where((g) => !g.isPrintedToKitchen && g.items.isNotEmpty)
-        .toList();
-
-    if (unprintedGroups.isEmpty) {
+  unprintedGroups = table.orderGroups.where((group) {
+    if (group.isPrintedToKitchen || group.items.isEmpty) {
       return false;
     }
 
-    for (var group in unprintedGroups) {
-      itemsToPrint.addAll(
-        group.items.where((item) {
-          final kategori = item.product.category;
-          return categoryPrintSettings[kategori] ?? true;
-        }),
-      );
-    }
-
-    // Important:
-    // If this group only contains non-kitchen-print categories
-    // like drinks, do NOT print a blank kitchen ticket.
-    // But still lock/finalize the group so waiter cannot delete it later.
-    if (itemsToPrint.isEmpty) {
-      for (var group in unprintedGroups) {
-        group.isPrintedToKitchen = true;
-      }
-
-      notifyListeners();
-      _syncFullState();
-      unawaited(_saveTablesSilent());
-
+    if (onlyOrderItemIds == null) {
       return true;
     }
-  } else {
-    itemsToPrint = table.orders;
+
+    return group.items.any(
+      (item) => onlyOrderItemIds.contains(item.id),
+    );
+  }).toList();
+
+  if (unprintedGroups.isEmpty) {
+    return false;
   }
+
+  for (var group in unprintedGroups) {
+    itemsToPrint.addAll(
+      group.items.where((item) {
+        if (onlyOrderItemIds != null &&
+            !onlyOrderItemIds.contains(item.id)) {
+          return false;
+        }
+
+        final kategori = item.product.category;
+        return categoryPrintSettings[kategori] ?? true;
+      }),
+    );
+  }
+
+  itemsToPrint = _mergeItemsForPrint(itemsToPrint);
+
+  // If this session only contains non-kitchen categories like drinks,
+  // do not print a blank kitchen ticket.
+  // But still finalize/lock the related order group.
+  if (itemsToPrint.isEmpty) {
+    for (var group in unprintedGroups) {
+      group.isPrintedToKitchen = true;
+    }
+
+    notifyListeners();
+    _syncFullState();
+    unawaited(_saveTablesSilent());
+
+    return true;
+  }
+} else {
+  itemsToPrint = _mergeItemsForPrint(table.orders);
+}
 
     try {
       selectedPrinter = printers.firstWhere((pName) {
@@ -1136,11 +1326,14 @@ void removeProductFromTable(
         if (target == PrintTarget.kitchen) {
           bytes += generator.text('$qtyStr $safeName', styles: const PosStyles(bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
         } else {
-          final total = item.totalPrice.toStringAsFixed(2);
-          bytes += generator.row([
-            PosColumn(text: '$qtyStr $safeName', width: 8),
-            PosColumn(text: '$total TL', width: 4, styles: const PosStyles(align: PosAlign.right)),
-          ]);
+          final total = '${item.totalPrice.toStringAsFixed(2)} TL';
+          final leftText = '$qtyStr $safeName';
+
+          bytes += _cashierReceiptLine(
+            generator: generator,
+            leftText: leftText,
+            rightText: total,
+          );
         }
         bytes += generator.emptyLines(1);
       }

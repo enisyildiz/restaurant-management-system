@@ -23,6 +23,9 @@ class _OrderViewState extends State<OrderView> {
   String _numpadValue = '0';
 
   final Set<String> _selectedOrderItemIds = {};
+  final Set<String> _orderItemIdsAddedInThisView = {};
+
+  bool _isCashierPrinting = false;
 
   @override
 Widget build(BuildContext context) {
@@ -211,21 +214,33 @@ Widget _buildActionButtonStrip(TableModel table) {
           children: [
             Expanded(
               child: _buildOrderActionButton(
-                text: 'Kasa Yazdır',
+                text: _isCashierPrinting ? 'Yazdırılıyor...' : 'Kasa Yazdır',
                 color: Colors.green.shade200,
-                onPressed: table.orders.isEmpty
-                ? null
-                : () async {
-                    final printed = await widget.controller.printReceipt(
-                      widget.tableId,
-                      PrintTarget.cashier,
-                    );
+                onPressed: table.orders.isEmpty || _isCashierPrinting
+                    ? null
+                    : () async {
+                        setState(() {
+                          _isCashierPrinting = true;
+                        });
 
-                    if (printed || _allowExitWithoutPrinterForTesting) {
-                      widget.controller.markTableAskedForCheck(widget.tableId);
-                    }
-                  },
-              ),
+                        final printed = await widget.controller.printReceipt(
+                          widget.tableId,
+                          PrintTarget.cashier,
+                        );
+
+                        if (printed || _allowExitWithoutPrinterForTesting) {
+                          widget.controller.markTableAskedForCheck(widget.tableId);
+                        }
+
+                        await Future.delayed(const Duration(seconds: 5));
+
+                        if (!mounted) return;
+
+                        setState(() {
+                          _isCashierPrinting = false;
+                        });
+                      },
+                  ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -403,6 +418,11 @@ Widget _buildProductCard(Product product) {
 }
 
 void _addProductToTable(Product product) {
+  final beforeIds = widget.controller
+      .ordersForTable(widget.tableId)
+      .map((item) => item.id)
+      .toSet();
+
   final qty = double.tryParse(_numpadValue.replaceAll(',', '.')) ?? 0.0;
 
   if (qty > 0) {
@@ -415,8 +435,15 @@ void _addProductToTable(Product product) {
     widget.controller.addProductToTable(widget.tableId, product);
   }
 
+  final afterItems = widget.controller.ordersForTable(widget.tableId);
+
+  final newIds = afterItems
+      .where((item) => !beforeIds.contains(item.id))
+      .map((item) => item.id);
+
   setState(() {
     _numpadValue = '0';
+    _orderItemIdsAddedInThisView.addAll(newIds);
   });
 }
 
@@ -736,67 +763,82 @@ Widget _buildAdisyonBottomButtons(TableModel table) {
     orElse: () => table,
   );
 
-  final hasUnprinted = currentTable.orderGroups.any(
-    (group) => !group.isPrintedToKitchen && group.items.isNotEmpty,
+  // If this screen did not add anything, closing must never print.
+  if (_orderItemIdsAddedInThisView.isEmpty) {
+    if (!mounted) return;
+
+    setState(() {
+      _selectedOrderItemIds.clear();
+    });
+
+    Navigator.pop(context);
+    return;
+  }
+
+  final printed = await widget.controller.printReceipt(
+    widget.tableId,
+    PrintTarget.kitchen,
+    onlyOrderItemIds: _orderItemIdsAddedInThisView,
   );
 
-  if (hasUnprinted) {
-    final printed = await widget.controller.printReceipt(
-      widget.tableId,
-      PrintTarget.kitchen,
+  if (!printed) {
+    if (!_allowExitWithoutPrinterForTesting) {
+      return;
+    }
+
+    final exitAnyway = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.surfaceLight,
+          title: const Text('Test Çıkışı'),
+          content: const Text(
+            'Mutfak yazıcısı bulunamadı.\n\n'
+            'Test için adisyonu kapatıp bu yeni siparişleri kilitlemek ister misin?\n\n'
+            'Not: Gerçek kullanımda bu seçenek kapatılmalı.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hayır'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.pastelRed,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Test İçin Kapat'),
+            ),
+          ],
+        );
+      },
     );
 
-    if (!printed) {
-      if (!_allowExitWithoutPrinterForTesting) {
-        return;
-      }
+    if (exitAnyway != true) {
+      return;
+    }
 
-      final exitAnyway = await showDialog<bool>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: AppTheme.surfaceLight,
-            title: const Text('Test Çıkışı'),
-            content: const Text(
-              'Mutfak yazıcısı bulunamadı.\n\n'
-              'Test için adisyonu kapatıp bu yeni siparişleri kilitlemek ister misin?\n\n'
-              'Not: Gerçek kullanımda bu seçenek kapatılmalı.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Hayır'),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.pastelRed,
-                ),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Test İçin Kapat'),
-              ),
-            ],
-          );
-        },
+    for (final group in currentTable.orderGroups) {
+      final containsCurrentSessionItem = group.items.any(
+        (item) => _orderItemIdsAddedInThisView.contains(item.id),
       );
 
-      if (exitAnyway != true) {
-        return;
-      }
-
-      // TEMP TEST MODE:
-      // Printer olmadığı için mutfağa yazdırılmış gibi kilitliyoruz.
-      for (final group in currentTable.orderGroups) {
-        if (!group.isPrintedToKitchen && group.items.isNotEmpty) {
-          group.isPrintedToKitchen = true;
-        }
+      if (containsCurrentSessionItem) {
+        group.isPrintedToKitchen = true;
       }
     }
   }
+
+  widget.controller.finalizeKitchenOrderItems(
+    widget.tableId,
+    _orderItemIdsAddedInThisView.toList(),
+  );
 
   if (!mounted) return;
 
   setState(() {
     _selectedOrderItemIds.clear();
+    _orderItemIdsAddedInThisView.clear();
   });
 
   Navigator.pop(context);
