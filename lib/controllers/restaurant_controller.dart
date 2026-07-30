@@ -19,6 +19,8 @@ import '../models/user_role.dart';
 import '../services/network_service.dart';
 import '../services/database_service.dart';
 import '../services/logger_service.dart';
+import '../services/license_service.dart';
+import '../services/user_service.dart';
 import '../globals.dart';
 import '../utils/money_formatter.dart';
 
@@ -50,26 +52,62 @@ class RestaurantController extends ChangeNotifier {
 
   User? currentUser;
   NetworkService? _networkService;
+  int maxTablets = 2;
+
+  // Veritabanı ve Ağ Servisleri
+  late DatabaseService _dbService;
   int? startupTime;
 
   final Map<int, Future<int?>> _sessionCreationFutures = {};
 
-  bool login(String username, String password) {
-    if (username == 'kasa' && password == '250111') {
-      currentUser = const User(username: 'kasa', role: UserRole.admin);
-      startupTime = DateTime.now().millisecondsSinceEpoch;
-      _initNetwork();
-      notifyListeners();
-      return true;
-    } else if (username == 'tablet' && password == '123') {
-      currentUser = const User(username: 'tablet', role: UserRole.waiter);
+  Future<bool> login(String username, String password) async {
+    // 1. Yerel kullanıcıları (Garsonları) kontrol et
+    if (UserService.instance.users.isEmpty) {
+      await UserService.instance.loadUsers();
+    }
+    
+    final localUser = UserService.instance.authenticate(username, password);
+    
+    if (localUser != null) {
+      currentUser = User(username: localUser.username, role: localUser.role);
       _loadOfflineQueue().then((_) {
         _initNetwork();
       });
       notifyListeners();
       return true;
     }
-    return false;
+
+    // Geriye dönük uyumluluk veya acil durumlar için harcoded tablet girişi
+    if (username == 'tablet' && password == '123' && UserService.instance.users.isEmpty) {
+      currentUser = User(username: 'tablet', role: UserRole.waiter);
+      _loadOfflineQueue().then((_) {
+        _initNetwork();
+      });
+      notifyListeners();
+      return true;
+    }
+    
+    // 2. Yerelde bulunamadıysa Kasa (Admin) olarak Firebase üzerinden dene
+    try {
+      String email = username;
+      if (!email.contains('@')) {
+        email = '$email@restoran.com';
+      }
+
+      // Firebase ve yerel lisans kontrolü
+      final license = await LicenseService.instance.validateLicense(email, password);
+      
+      maxTablets = license.maxTablets;
+      currentUser = User(username: username, role: UserRole.admin);
+      startupTime = DateTime.now().millisecondsSinceEpoch;
+      
+      _initNetwork();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      // Hata fırlat ki UI'da yakalanıp Snackbar ile gösterilsin
+      throw Exception(e.toString());
+    }
   }
 
   void _initNetwork() {

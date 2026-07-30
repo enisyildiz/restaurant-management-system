@@ -32,35 +32,42 @@ class _LoginViewState extends State<LoginView> {
     // Simulate a brief network delay for UX
     await Future.delayed(const Duration(milliseconds: 600));
 
-    final success = widget.controller.login(
-      _usernameController.text.trim(),
-      _passwordController.text.trim(),
-    );
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (success) {
-      if (!mounted) return;
-      final role = widget.controller.currentUser!.role;
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) {
-            if (role == UserRole.waiter) {
-              return TableView(controller: widget.controller);
-            }
-            return MainMenuView(controller: widget.controller);
-          },
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
+    try {
+      final success = await widget.controller.login(
+        _usernameController.text.trim(),
+        _passwordController.text.trim(),
       );
-    } else {
+
       setState(() {
-        _errorMessage = 'Geçersiz kullanıcı adı veya şifre.';
+        _isLoading = false;
+      });
+
+      if (success) {
+        if (!mounted) return;
+        final role = widget.controller.currentUser!.role;
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) {
+              if (role == UserRole.waiter) {
+                return TableView(controller: widget.controller);
+              }
+              return MainMenuView(controller: widget.controller);
+            },
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+          ),
+        );
+      } else {
+        setState(() {
+          _errorMessage = 'Geçersiz e-posta/kullanıcı adı veya şifre';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '').replaceAll('LicenseException: ', '');
       });
     }
   }

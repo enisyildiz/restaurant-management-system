@@ -3,6 +3,7 @@ import 'table_view.dart';
 import 'admin_dashboard_view.dart';
 import 'menu_management_view.dart';
 import 'table_management_view.dart';
+import 'settings_view.dart';
 import 'login_view.dart';
 import '/controllers/restaurant_controller.dart';
 import '../theme/theme.dart';
@@ -101,15 +102,34 @@ class MainMenuView extends StatelessWidget {
                 if (isAdmin)
                   Expanded(
                     child: _MainMenuCard(
-                      icon: Icons.settings,
-                      title: 'Ayarlar',
-                      subtitle: 'Restoranını Yönet',
+                      icon: Icons.table_bar,
+                      title: 'Masa Yönetimi',
+                      subtitle: 'Masaları düzenle',
                       color: AppTheme.primary,
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => TableManagementView(controller: controller),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                if (isAdmin) const SizedBox(width: 16),
+                if (isAdmin)
+                  Expanded(
+                    child: _MainMenuCard(
+                      icon: Icons.settings,
+                      title: 'Ayarlar',
+                      subtitle: 'Sistem Ayarları',
+                      color: AppTheme.textMuted,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SettingsView(controller: controller),
                           ),
                         );
                       },

@@ -6,6 +6,7 @@ import '../theme/theme.dart';
 import '../services/database_service.dart';
 import 'dart:async';
 import '../utils/money_formatter.dart';
+import 'widgets/user_management_page.dart';
 
 class AdminDashboardView extends StatefulWidget {
   final RestaurantController controller;
@@ -72,11 +73,6 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
                 selectedIcon: Icon(Icons.calendar_month),
                 label: Text('Haftalık Satış Verileri'),
               ),
-              NavigationRailDestination(
-                icon: Icon(Icons.bug_report_outlined),
-                selectedIcon: Icon(Icons.bug_report),
-                label: Text('Test Verisi'),
-              ),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
@@ -101,8 +97,6 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
         return const _AnalyticsLogPage();
       case 4:
         return const _WeeklySalesDataPage(); 
-      case 5:
-        return _MockDataPage(controller: widget.controller);
       default:
         return const Center(child: Text('Sayfa bulunamadı'));
     }
@@ -4148,91 +4142,5 @@ String _formatDateShort(DateTime date) {
 // --------------------------------------------------------------------
 // TEST VERİSİ OLUŞTURMA SAYFASI
 // --------------------------------------------------------------------
-class _MockDataPage extends StatefulWidget {
-  final RestaurantController controller;
-  const _MockDataPage({required this.controller});
 
-  @override
-  State<_MockDataPage> createState() => _MockDataPageState();
-}
-
-class _MockDataPageState extends State<_MockDataPage> {
-  bool isGenerating = false;
-
-  Future<void> _generateData() async {
-    setState(() => isGenerating = true);
-    final db = await DatabaseService.instance.database;
-    final random = dart_math.Random();
-    final now = DateTime.now();
-
-    for (int i = 0; i < 100; i++) {
-      final daysAgo = random.nextInt(365);
-      final hour = random.nextInt(14) + 10; // 10:00 - 23:59
-      final minute = random.nextInt(60);
-      
-      final date = now.subtract(Duration(days: daysAgo));
-      final randomDate = DateTime(date.year, date.month, date.day, hour, minute);
-      
-      final table = widget.controller.tables[random.nextInt(widget.controller.tables.length)];
-      
-      final amount = 100 + random.nextInt(900).toDouble(); // 100.0 - 999.0
-      final isCash = random.nextBool();
-      final cashPaid = isCash ? amount : 0.0;
-      final cardPaid = isCash ? 0.0 : amount;
-
-      final receiptId = await db.insert('receipts', {
-        'table_id': table.id,
-        'table_code': table.code,
-        'table_area': table.area,
-        'table_name': table.name,
-        'total_amount': amount,
-        'total_paid': amount,
-        'cash_paid': cashPaid,
-        'card_paid': cardPaid,
-        'date_closed': randomDate.toIso8601String(),
-      });
-
-      // Insert some random items
-      final itemCount = random.nextInt(3) + 1;
-      for (int j = 0; j < itemCount; j++) {
-        final itemPrice = amount / itemCount;
-        await db.insert('receipt_items', {
-          'receipt_id': receiptId,
-          'product_id': 'mock_${random.nextInt(100)}',
-          'product_name': 'Örnek Ürün ${random.nextInt(100)}',
-          'product_category': 'Yiyecek',
-          'quantity': 1,
-          'price': itemPrice,
-        });
-      }
-    }
-
-    setState(() => isGenerating = false);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Geçmişe dönük 100 adet rastgele satış eklendi!'), backgroundColor: AppTheme.pastelGreen),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: isGenerating 
-        ? const CircularProgressIndicator()
-        : ElevatedButton.icon(
-            icon: const Icon(Icons.add_chart),
-            label: const Text('100 Rastgele Satış Ekle (Son 1 Yıl)'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-              textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            onPressed: widget.controller.tables.isEmpty ? null : _generateData,
-          ),
-    );
-  }
-}
 
