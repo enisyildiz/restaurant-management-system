@@ -269,25 +269,53 @@ class RestaurantController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setCustomPrice(int tableId, int productId, double newPrice, {bool fromNetwork = false}) {
-    final tableIndex = tables.indexWhere((t) => t.id == tableId);
-    if (tableIndex != -1) {
-      tables[tableIndex].customPrices[productId] = newPrice;
-      notifyListeners();
+  void setCustomPrice(
+  int tableId,
+  int productId,
+  double newPrice, {
+  bool fromNetwork = false,
+}) {
+  final tableIndex = tables.indexWhere((t) => t.id == tableId);
 
-      if (!fromNetwork && _networkService != null) {
-        final actionData = {
-          'action': 'set_custom_price',
-          'tableId': tableId,
-          'productId': productId,
-          'price': newPrice,
-        };
-        _queueAction(actionData);
+  if (tableIndex == -1) return;
+
+  final table = tables[tableIndex];
+
+  table.customPrices[productId] = newPrice;
+
+  if (_isAdminDevice) {
+    unawaited(() async {
+      try {
+        final sessionId = await _ensureActiveSessionForTable(table);
+
+        if (sessionId == null) return;
+
+        await DatabaseService.instance.updateOrderEventPriceForSessionProduct(
+          sessionId: sessionId,
+          productId: productId,
+          newUnitPrice: newPrice,
+        );
+      } catch (e) {
+        LoggerService.instance.error('Error updating custom price analytics: $e');
       }
-      
-      _saveTablesSilent();
-    }
+    }());
   }
+
+  notifyListeners();
+
+  if (!fromNetwork && _networkService != null) {
+    final actionData = {
+      'action': 'set_custom_price',
+      'tableId': tableId,
+      'productId': productId,
+      'price': newPrice,
+    };
+
+    _queueAction(actionData);
+  }
+
+  _saveTablesSilent();
+}
 
   List<TableModel> tables = [];
 
@@ -626,6 +654,10 @@ String? get _currentUsername => currentUser?.username;
 
 String? get _currentUserRoleName => currentUser?.role.name;
 
+double _effectivePriceForTableProduct(TableModel table, Product product) {
+  return table.customPrices[product.id] ?? product.price;
+}
+
 String _paymentMethodToDatabaseValue(PaymentMethod method) {
   switch (method) {
     case PaymentMethod.cash:
@@ -687,6 +719,7 @@ void _logOrderEventIfAdmin({
   required Product product,
   required String eventType,
   required double quantityDelta,
+  required double unitPrice,
   required double totalPrice,
 }) {
   if (!_isAdminDevice) return;
@@ -711,7 +744,7 @@ void _logOrderEventIfAdmin({
         productName: product.name,
         productCategory: product.category,
         quantityDelta: quantityDelta,
-        unitPrice: product.price,
+        unitPrice: unitPrice,
         totalPrice: totalPrice,
         username: _currentUsername,
         userRole: _currentUserRoleName,
@@ -907,12 +940,15 @@ void addProductToTable(
 table.status = TableStatus.occupied;
 table.seatedAt ??= DateTime.now();
 
+  final effectivePrice = _effectivePriceForTableProduct(table, product);
+
   _logOrderEventIfAdmin(
     table: table,
     product: product,
     eventType: 'order_added',
     quantityDelta: quantity,
-    totalPrice: product.price * quantity,
+    unitPrice: effectivePrice,
+    totalPrice: effectivePrice * quantity,
   );
 
   if (!fromNetwork && _networkService != null) {
@@ -967,12 +1003,18 @@ void setProductQuantity(
   table.status = TableStatus.occupied;
   table.seatedAt ??= DateTime.now();
 
+  final effectivePrice = _effectivePriceForTableProduct(
+    table,
+    targetItem.product,
+  );
+
   _logOrderEventIfAdmin(
     table: table,
     product: targetItem.product,
     eventType: 'quantity_updated',
     quantityDelta: delta,
-    totalPrice: targetItem.product.price * delta,
+    unitPrice: effectivePrice,
+    totalPrice: effectivePrice * delta,
   );
 
   if (!fromNetwork && _networkService != null) {
@@ -1011,12 +1053,18 @@ void removeProductFromTable(
 
   table.orderGroups.removeWhere((g) => g.items.isEmpty && !g.isPrintedToKitchen);
 
+  final effectivePrice = _effectivePriceForTableProduct(
+    table,
+    removedItem.product,
+  );
+
   _logOrderEventIfAdmin(
     table: table,
     product: removedItem.product,
     eventType: 'item_removed',
     quantityDelta: -removedItem.quantity,
-    totalPrice: -(removedItem.product.price * removedItem.quantity),
+    unitPrice: effectivePrice,
+    totalPrice: -(effectivePrice * removedItem.quantity),
   );
 
   if (table.orderGroups.isEmpty || table.orderGroups.every((g) => g.items.isEmpty)) {

@@ -393,13 +393,17 @@ Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
     final String tableName = table.name;
     
     // Ürünleri de kopyalıyoruz çünkü asıl liste anında siliniyor!
-    final clonedOrders = table.orders.map((o) => {
+    final clonedOrders = table.orders.map((o) {
+    final effectivePrice = table.customPrices[o.product.id] ?? o.product.price;
+
+    return {
       'product_id': o.product.id,
       'product_name': o.product.name,
       'product_category': o.product.category,
       'quantity': o.quantity,
-      'price': o.product.price,
-    }).toList();
+      'price': effectivePrice,
+    };
+  }).toList();
 
     final db = await instance.database;
     
@@ -539,6 +543,75 @@ Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
       ],
     );
   }
+
+  Future<void> updateOrderEventPriceForSessionProduct({
+  required int sessionId,
+  required int productId,
+  required double newUnitPrice,
+}) async {
+  final db = await instance.database;
+
+  await db.transaction((txn) async {
+    final beforeResult = await txn.rawQuery(
+      '''
+      SELECT COALESCE(SUM(total_price), 0) AS total
+      FROM order_events
+      WHERE session_id = ?
+        AND product_id = ?
+        AND event_type IN ('order_added', 'quantity_updated', 'item_removed')
+      ''',
+      [sessionId, productId],
+    );
+
+    final beforeTotal =
+        ((beforeResult.first['total'] as num?) ?? 0).toDouble();
+
+    await txn.rawUpdate(
+      '''
+      UPDATE order_events
+      SET
+        unit_price = ?,
+        total_price = quantity_delta * ?
+      WHERE session_id = ?
+        AND product_id = ?
+        AND event_type IN ('order_added', 'quantity_updated', 'item_removed')
+      ''',
+      [
+        newUnitPrice,
+        newUnitPrice,
+        sessionId,
+        productId,
+      ],
+    );
+
+    final afterResult = await txn.rawQuery(
+      '''
+      SELECT COALESCE(SUM(total_price), 0) AS total
+      FROM order_events
+      WHERE session_id = ?
+        AND product_id = ?
+        AND event_type IN ('order_added', 'quantity_updated', 'item_removed')
+      ''',
+      [sessionId, productId],
+    );
+
+    final afterTotal =
+        ((afterResult.first['total'] as num?) ?? 0).toDouble();
+
+    final delta = afterTotal - beforeTotal;
+
+    if (delta != 0) {
+      await txn.rawUpdate(
+        '''
+        UPDATE table_sessions
+        SET total_ordered = total_ordered + ?
+        WHERE id = ?
+        ''',
+        [delta, sessionId],
+      );
+    }
+  });
+}
 
   Future<void> insertPaymentEvent({
     required int sessionId,
