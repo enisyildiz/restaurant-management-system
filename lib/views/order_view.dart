@@ -5,6 +5,7 @@ import '../theme/theme.dart';
 import '../models/product.dart';
 import '../models/order_item.dart';
 import 'payment_view.dart';
+import '../utils/money_formatter.dart';
 
 class OrderView extends StatefulWidget {
   final RestaurantController controller;
@@ -402,7 +403,7 @@ Widget _buildProductCard(Product product) {
               ),
               const SizedBox(height: 7),
               Text(
-                '${product.price.toStringAsFixed(2)} ₺',
+                MoneyFormatter.formatTl(product.price),
                 style: const TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.w900,
@@ -550,7 +551,7 @@ final isSelected = _selectedOrderItemIds.contains(orderItem.id);
                                       ),
                                     ),
                                     subtitle: Text(
-                                      '${effectivePrice.toStringAsFixed(2)} ₺ x ${_formatQuantity(orderItem.quantity)}',
+                                      '${MoneyFormatter.formatTl(effectivePrice)} x ${_formatQuantity(orderItem.quantity)}',
                                     ),
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -563,10 +564,7 @@ final isSelected = _selectedOrderItemIds.contains(orderItem.id);
                                             ),
                                             tooltip: 'Özel Fiyat Belirle',
                                             onPressed: () {
-                                              final price = double.tryParse(
-                                                    _numpadValue.replaceAll(',', '.'),
-                                                  ) ??
-                                                  0.0;
+                                              final price = MoneyFormatter.tryParseAmount(_numpadValue) ?? 0.0;
 
                                               if (price > 0) {
                                                 widget.controller.setCustomPrice(
@@ -665,7 +663,7 @@ Widget _buildAdisyonBottomButtons(TableModel table) {
               ),
             ),
             Text(
-              '${table.currentTotal.toStringAsFixed(2)} ₺',
+              MoneyFormatter.formatTl(table.currentTotal),
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,

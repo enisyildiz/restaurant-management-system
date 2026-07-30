@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../controllers/restaurant_controller.dart';
 import '../models/payment_record.dart';
 import '../theme/theme.dart';
+import '../utils/money_formatter.dart';
 
 class PaymentView extends StatefulWidget {
   final RestaurantController controller;
@@ -22,9 +23,9 @@ class _PaymentViewState extends State<PaymentView> {
   String amountInput = '0';
 
   double get enteredAmount {
-    final parsed = double.tryParse(amountInput);
-    if (parsed == null || parsed <= 0) return 0;
-    return parsed;
+  final parsed = MoneyFormatter.tryParseAmount(amountInput);
+  if (parsed == null || parsed <= 0) return 0;
+  return parsed;
   }
 
   void _onNumpadPressed(String value) {
@@ -145,7 +146,10 @@ class _PaymentViewState extends State<PaymentView> {
                                         isDiscount ? Icons.discount : (isCash ? Icons.money : Icons.credit_card),
                                         color: isDiscount ? Colors.orange.shade300 : (isCash ? AppTheme.pastelGreen : AppTheme.pastelBlue)
                                       ),
-                                      title: Text('${p.amount.toStringAsFixed(2)} ₺', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      title: Text(
+                                        MoneyFormatter.formatTl(p.amount),
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
                                       subtitle: Text(isDiscount ? 'İndirim' : (isCash ? 'Nakit' : 'Kredi Kartı')),
                                     );
                                   },
@@ -187,7 +191,7 @@ class _PaymentViewState extends State<PaymentView> {
                           border: Border.all(color: AppTheme.primary.withOpacity(0.3), width: 2),
                         ),
                         child: Text(
-                          '$amountInput ₺',
+                          MoneyFormatter.formatTl(enteredAmount),
                           textAlign: TextAlign.right,
                           style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: AppTheme.textDark),
                         ),
@@ -293,7 +297,7 @@ class _PaymentViewState extends State<PaymentView> {
           ),
         ),
         Text(
-          '${amount.toStringAsFixed(2)} ₺',
+          MoneyFormatter.formatTl(amount),
           style: TextStyle(
             fontSize: fontSize,
             color: valueColor,
@@ -419,7 +423,9 @@ class _PaymentViewState extends State<PaymentView> {
                         border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
                       ),
                       child: Text(
-                        '$discountInput ₺',
+                        MoneyFormatter.formatTl(
+                          MoneyFormatter.tryParseAmount(discountInput) ?? 0,
+                        ),
                         textAlign: TextAlign.right,
                         style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                       ),
@@ -466,7 +472,7 @@ class _PaymentViewState extends State<PaymentView> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: AppTheme.pastelGreen, foregroundColor: AppTheme.textDark),
                   onPressed: () {
-                    final val = double.tryParse(discountInput) ?? 0;
+                    final val = MoneyFormatter.tryParseAmount(discountInput) ?? 0;
                     if (val > 0) {
                       final table = widget.controller.tables.firstWhere((t) => t.id == widget.tableId);
                       final remaining = table.remainingAmount;
@@ -503,7 +509,10 @@ class _PaymentViewState extends State<PaymentView> {
                                     method: PaymentMethod.discount,
                                   );
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('$val ₺ indirim uygulandı.'), backgroundColor: AppTheme.pastelGreen),
+                                    SnackBar(
+                                      content: Text('${MoneyFormatter.formatTl(val)} indirim uygulandı.'),
+                                      backgroundColor: AppTheme.pastelGreen,
+                                    ),
                                   );
                                 },
                                 child: const Text('Evet'),

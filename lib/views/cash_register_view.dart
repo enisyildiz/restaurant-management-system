@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../controllers/restaurant_controller.dart';
 import '../services/database_service.dart';
 import '../theme/theme.dart';
+import '../utils/money_formatter.dart';
 
 class CashRegisterView extends StatelessWidget {
   final RestaurantController controller;
@@ -221,8 +222,7 @@ class _ExpenseMovementsPageState extends State<_ExpenseMovementsPage> {
   }
 
   Future<void> _saveExpense() async {
-    final amountText = amountController.text.trim().replaceAll(',', '.');
-    final amount = double.tryParse(amountText);
+    final amount = MoneyFormatter.tryParseAmount(amountController.text);
     final reason = _selectedReason();
     final paymentMethod = _selectedPaymentMethod();
 
@@ -2057,7 +2057,7 @@ int? _toNullableInt(dynamic value) {
 }
 
 String _formatMoney(double value) {
-  return '${value.toStringAsFixed(2)} ₺';
+  return MoneyFormatter.formatTl(value);
 }
 
 String _formatDateOnly(DateTime date) {

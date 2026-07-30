@@ -5,6 +5,7 @@ import '../models/table_model.dart';
 import '../theme/theme.dart';
 import '../services/database_service.dart';
 import 'dart:async';
+import '../utils/money_formatter.dart';
 
 class AdminDashboardView extends StatefulWidget {
   final RestaurantController controller;
@@ -147,7 +148,7 @@ class _GeneralStatsPage extends StatelessWidget {
                     const SizedBox(width: 24),
                     _buildStatCard('Boş Masa', emptyTablesCount.toString(), Icons.event_seat, AppTheme.pastelGreen),
                     const SizedBox(width: 24),
-                    _buildStatCard('Açık Sipariş Toplamı', '${activeOrderAmount.toStringAsFixed(2)} ₺', Icons.receipt_long, AppTheme.pastelYellow),
+                    _buildStatCard('Açık Sipariş Toplamı', MoneyFormatter.formatTl(activeOrderAmount), Icons.receipt_long, AppTheme.pastelYellow),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -1199,16 +1200,8 @@ String _formatHourMinute(DateTime date) {
   return '$hour:$minute';
 }
 
-String _formatMoneyCompact(double value) {
-  if (value >= 1000000) {
-    return '${(value / 1000000).toStringAsFixed(1)}M ₺';
-  }
-
-  if (value >= 1000) {
-    return '${(value / 1000).toStringAsFixed(1)}K ₺';
-  }
-
-  return '${value.toStringAsFixed(0)} ₺';
+String _formatMoneyCompact(num value) {
+  return MoneyFormatter.formatTl(value);
 }
 
 class _GraphLegendDot extends StatelessWidget {
@@ -1436,8 +1429,8 @@ class _HourlyHoverTooltip extends StatelessWidget {
   }
 }
 
-String _formatMoneyLarge(double value) {
-  return '${value.toStringAsFixed(0)} ₺';
+String _formatMoneyLarge(num value) {
+  return MoneyFormatter.formatTl(value);
 }
 
 String _formatFullDateTime(DateTime date) {
@@ -1582,7 +1575,7 @@ Widget build(BuildContext context) {
                 const SizedBox(width: 24),
                 _buildDailyCard(
                   'Bugünün Cirosu',
-                  '${todayTotal.toStringAsFixed(2)} ₺',
+                  MoneyFormatter.formatTl(todayTotal),
                   Icons.attach_money,
                   AppTheme.primary,
                 ),
@@ -1768,7 +1761,7 @@ Widget build(BuildContext context) {
           ),
           const SizedBox(height: 16),
           Text(
-            '${amount.toStringAsFixed(2)} ₺',
+            MoneyFormatter.formatTl(amount),
             style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.bold,
@@ -2004,13 +1997,22 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                     itemCount: items.length,
                     itemBuilder: (context, index) {
                       final item = items[index];
+
+                      final quantity = (item['quantity'] as num).toDouble();
+                      final quantityText = quantity == quantity.truncateToDouble()
+                          ? quantity.toInt().toString()
+                          : quantity.toString();
+
+                      final price = (item['price'] as num).toDouble();
+                      final lineTotal = price * quantity;
+
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4.0),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('${(item['quantity'] as num).toDouble() == (item['quantity'] as num).truncateToDouble() ? (item['quantity'] as num).toInt() : (item['quantity'] as num).toDouble()}x ${item['product_name']}'),
-                            Text('${((item['price'] as num) * (item['quantity'] as num)).toStringAsFixed(2)} ₺'),
+                            Text('$quantityText x ${item['product_name']}'),
+                            Text(MoneyFormatter.formatTl(lineTotal)),
                           ],
                         ),
                       );
@@ -2022,7 +2024,13 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Nakit Ödeme:', style: TextStyle(color: AppTheme.pastelGreen, fontWeight: FontWeight.bold)),
-                    Text('${(receipt['cash_paid'] as num?)?.toStringAsFixed(2) ?? "0.00"} ₺', style: const TextStyle(color: AppTheme.pastelGreen, fontWeight: FontWeight.bold)),
+                    Text(
+                      MoneyFormatter.formatTl((receipt['cash_paid'] as num?) ?? 0),
+                      style: const TextStyle(
+                        color: AppTheme.pastelGreen,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -2030,7 +2038,13 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Kart Ödeme:', style: TextStyle(color: AppTheme.pastelBlue, fontWeight: FontWeight.bold)),
-                    Text('${(receipt['card_paid'] as num?)?.toStringAsFixed(2) ?? "0.00"} ₺', style: const TextStyle(color: AppTheme.pastelBlue, fontWeight: FontWeight.bold)),
+                    Text(
+                      MoneyFormatter.formatTl((receipt['card_paid'] as num?) ?? 0),
+                      style: const TextStyle(
+                        color: AppTheme.pastelBlue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
                 const Divider(height: 32),
@@ -2038,7 +2052,13 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Toplam:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    Text('${(receipt['total_amount'] as num).toStringAsFixed(2)} ₺', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text(
+                      MoneyFormatter.formatTl(receipt['total_amount'] as num),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -2124,10 +2144,30 @@ class _AllSalesPageState extends State<_AllSalesPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildSummaryStat('Toplam Ciro', '${totalAmount.toStringAsFixed(2)} ₺', Icons.attach_money, AppTheme.primary),
-                _buildSummaryStat('Masa (Adisyon)', '${filteredReceipts.length}', Icons.table_restaurant, AppTheme.textDark),
-                _buildSummaryStat('Nakit', '${totalCash.toStringAsFixed(2)} ₺', Icons.money, AppTheme.pastelGreen),
-                _buildSummaryStat('Kredi Kartı', '${totalCard.toStringAsFixed(2)} ₺', Icons.credit_card, AppTheme.pastelBlue),
+                _buildSummaryStat(
+                  'Toplam Ciro',
+                  MoneyFormatter.formatTl(totalAmount),
+                  Icons.attach_money,
+                  AppTheme.primary,
+                ),
+                _buildSummaryStat(
+                  'Masa (Adisyon)',
+                  '${filteredReceipts.length}',
+                  Icons.table_restaurant,
+                  AppTheme.textDark,
+                ),
+                _buildSummaryStat(
+                  'Nakit',
+                  MoneyFormatter.formatTl(totalCash),
+                  Icons.money,
+                  AppTheme.pastelGreen,
+                ),
+                _buildSummaryStat(
+                  'Kredi Kartı',
+                  MoneyFormatter.formatTl(totalCard),
+                  Icons.credit_card,
+                  AppTheme.pastelBlue,
+                ),
               ],
             ),
           ),
@@ -2165,7 +2205,7 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '${(r['total_amount'] as num).toStringAsFixed(2)} ₺',
+                          MoneyFormatter.formatTl(r['total_amount'] as num),
                           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textDark),
                         ),
                         const SizedBox(width: 16),
@@ -2719,34 +2759,38 @@ class _OrderEventsList extends StatelessWidget {
 
   const _OrderEventsList({required this.data});
 
-  @override
-  Widget build(BuildContext context) {
-    if (data.isEmpty) {
-      return const Center(child: Text('Henüz sipariş logu yok.'));
-    }
-
-    return ListView.builder(
-      itemCount: data.length,
-      itemBuilder: (context, index) {
-        final item = data[index];
-
-        final quantity = ((item['quantity_delta'] as num?) ?? 0).toDouble();
-        final price = ((item['total_price'] as num?) ?? 0).toDouble();
-
-        return ListTile(
-          dense: true,
-          title: Text(
-            '${item['product_name']} x ${quantity == quantity.truncateToDouble() ? quantity.toInt() : quantity}',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Text(
-            '${item['table_area']} - ${item['table_code']} | ${item['product_category']}\n${_formatDateTime(item['created_at'])}',
-          ),
-          trailing: Text('${price.toStringAsFixed(0)} ₺'),
-        );
-      },
-    );
+@override
+Widget build(BuildContext context) {
+  if (data.isEmpty) {
+    return const Center(child: Text('Henüz sipariş logu yok.'));
   }
+
+  return ListView.builder(
+    itemCount: data.length,
+    itemBuilder: (context, index) {
+      final item = data[index];
+
+      final quantity = ((item['quantity_delta'] as num?) ?? 0).toDouble();
+      final price = ((item['total_price'] as num?) ?? 0).toDouble();
+
+      final quantityText = quantity == quantity.truncateToDouble()
+          ? quantity.toInt().toString()
+          : quantity.toString();
+
+      return ListTile(
+        dense: true,
+        title: Text(
+          '${item['product_name']} x $quantityText',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          '${item['table_area']} - ${item['table_code']} | ${item['product_category']}\n${_formatDateTime(item['created_at'])}',
+        ),
+        trailing: Text(MoneyFormatter.formatTl(price)),
+      );
+    },
+  );
+}
 }
 
 class _PaymentEventsList extends StatelessWidget {
@@ -2775,7 +2819,7 @@ class _PaymentEventsList extends StatelessWidget {
                 : Icons.credit_card,
           ),
           title: Text(
-            '${amount.toStringAsFixed(0)} ₺',
+            MoneyFormatter.formatTl(amount),
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: Text(
@@ -3003,7 +3047,7 @@ double _toDouble(dynamic value) {
 
 String _formatMoney(dynamic value) {
   final amount = _toDouble(value);
-  return '${amount.toStringAsFixed(2)} ₺';
+  return MoneyFormatter.formatTl(amount);
 }
 
 String _formatPaymentInfo(Map<String, dynamic> item) {

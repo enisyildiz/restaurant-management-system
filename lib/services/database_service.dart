@@ -716,30 +716,31 @@ Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
   }
 
   Future<List<Map<String, dynamic>>> getCategoryRevenueBetween({
-    required DateTime start,
-    required DateTime end,
-  }) async {
-    final db = await instance.database;
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
 
-    return db.rawQuery(
-      '''
-      SELECT
-        product_category,
-        SUM(quantity_delta) AS total_quantity,
-        SUM(total_price) AS total_revenue
-      FROM order_events
-      WHERE created_at >= ?
-        AND created_at < ?
-        AND event_type = 'order_added'
-      GROUP BY product_category
-      ORDER BY total_revenue DESC
-      ''',
-      [
-        start.toIso8601String(),
-        end.toIso8601String(),
-      ],
-    );
-  }
+  return db.rawQuery(
+    '''
+    SELECT
+      product_category,
+      SUM(quantity_delta) AS total_quantity,
+      SUM(total_price) AS total_revenue
+    FROM order_events
+    WHERE created_at >= ?
+      AND created_at < ?
+      AND event_type IN ('order_added', 'item_removed')
+    GROUP BY product_category
+    HAVING SUM(quantity_delta) > 0 OR SUM(total_price) > 0
+    ORDER BY total_revenue DESC
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+}
 
   Future<List<Map<String, dynamic>>> getTodaysCategoryRevenue() async {
     final now = DateTime.now();

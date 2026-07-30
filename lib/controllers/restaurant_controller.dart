@@ -20,6 +20,7 @@ import '../services/network_service.dart';
 import '../services/database_service.dart';
 import '../services/logger_service.dart';
 import '../globals.dart';
+import '../utils/money_formatter.dart';
 
 enum PrintTarget { 
   kitchen, 
@@ -1326,7 +1327,7 @@ void removeProductFromTable(
         if (target == PrintTarget.kitchen) {
           bytes += generator.text('$qtyStr $safeName', styles: const PosStyles(bold: true, width: PosTextSize.size2, height: PosTextSize.size2));
         } else {
-          final total = '${item.totalPrice.toStringAsFixed(2)} TL';
+          final total = MoneyFormatter.formatTlText(item.totalPrice);
           final leftText = '$qtyStr $safeName';
 
           bytes += _cashierReceiptLine(
@@ -1340,10 +1341,20 @@ void removeProductFromTable(
 
       if (target == PrintTarget.cashier) {
         bytes += generator.hr();
-        final totalAmount = table.currentTotal.toStringAsFixed(2);
         bytes += generator.row([
-          PosColumn(text: 'TOPLAM:', width: 6, styles: const PosStyles(bold: true)),
-          PosColumn(text: '$totalAmount TL', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
+          PosColumn(
+            text: 'TOPLAM:',
+            width: 6,
+            styles: const PosStyles(bold: true),
+          ),
+          PosColumn(
+            text: MoneyFormatter.formatTlText(table.currentTotal),
+            width: 6,
+            styles: const PosStyles(
+              align: PosAlign.right,
+              bold: true,
+            ),
+          ),
         ]);
       }
 
