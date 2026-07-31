@@ -628,6 +628,7 @@ final isSelected = _selectedOrderItemIds.contains(orderItem.id);
 Widget _buildAdisyonBottomButtons(TableModel table) {
   final openedAt = table.seatedAt;
   final lastOrderAt = _getLastOrderTime(table);
+  final canTakePayment = _isAdminUser();
 
   return Container(
     padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
@@ -689,23 +690,35 @@ Widget _buildAdisyonBottomButtons(TableModel table) {
                     ),
                   ),
                   onPressed: table.orders.isEmpty
-                      ? null
-                      : () async {
-                          final paymentCompleted =
-                              await Navigator.push<bool>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PaymentView(
-                                controller: widget.controller,
-                                tableId: widget.tableId,
+                    ? null
+                    : () async {
+                        if (!canTakePayment) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Ödeme alma işlemi sadece kasa/yönetici kullanıcısı tarafından yapılabilir.',
                               ),
+                              backgroundColor: Colors.red,
                             ),
                           );
+                          return;
+                        }
 
-                          if (paymentCompleted == true && context.mounted) {
-                            Navigator.pop(context);
-                          }
-                        },
+                        final paymentCompleted =
+                            await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PaymentView(
+                              controller: widget.controller,
+                              tableId: widget.tableId,
+                            ),
+                          ),
+                        );
+
+                        if (paymentCompleted == true && context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
                   child: const Text(
                     'Ödeme Al',
                     style: TextStyle(

@@ -378,22 +378,31 @@ Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
   }
 
   Future<void> saveClosedTable(TableModel table) async {
-    // BURASI ÇOK KRİTİK: Veritabanı işlemi asenkron olduğu için (await kullandığımız için)
-    // işlem bitene kadar UI thread'i masayı temizliyor ve her şeyi 0 hesaplıyordu.
-    // Bu yüzden değerleri asenkron bekleyişe (await instance.database) GİRMEDEN ÖNCE hesaplayıp kopyalıyoruz.
-    final double totalAmount = table.currentTotal;
-    final double totalPaid = table.totalPaid;
-    final double cashPaid = table.totalCashPaid;
-    final double cardPaid = table.totalCardPaid;
-    final double discountAmount = table.totalDiscount;
-    final int tableId = table.id;
-    final int? sessionId = table.activeSessionId;
-    final String tableCode = table.code;
-    final String tableArea = table.area;
-    final String tableName = table.name;
-    
-    // Ürünleri de kopyalıyoruz çünkü asıl liste anında siliniyor!
-    final clonedOrders = table.orders.map((o) {
+  // BURASI ÇOK KRİTİK: Veritabanı işlemi asenkron olduğu için (await kullandığımız için)
+  // işlem bitene kadar UI thread'i masayı temizliyor ve her şeyi 0 hesaplıyordu.
+  // Bu yüzden değerleri asenkron bekleyişe (await instance.database) GİRMEDEN ÖNCE hesaplayıp kopyalıyoruz.
+
+  final double cashPaid = table.totalCashPaid;
+  final double cardPaid = table.totalCardPaid;
+  final double discountAmount = table.totalDiscount;
+
+  // Muhasebe kuralı:
+  // Ciro sadece gerçekten alınan para olmalı.
+  // İndirim ciroya dahil edilmez.
+  final double netRevenueAmount = cashPaid + cardPaid;
+
+  final double totalAmount = netRevenueAmount;
+  final double totalPaid = netRevenueAmount;
+
+  final int tableId = table.id;
+  final int? sessionId = table.activeSessionId;
+  final String tableCode = table.code;
+  final String tableArea = table.area;
+  final String tableName = table.name;
+
+  // Ürünleri de kopyalıyoruz çünkü asıl liste anında siliniyor.
+  // Özel fiyat varsa ürün detaylarında da özel fiyatı kullanıyoruz.
+  final clonedOrders = table.orders.map((o) {
     final effectivePrice = table.customPrices[o.product.id] ?? o.product.price;
 
     return {
@@ -405,33 +414,33 @@ Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
     };
   }).toList();
 
-    final db = await instance.database;
-    
-    final receiptId = await db.insert('receipts', {
-      'table_id': tableId,
-      'table_code': tableCode,
-      'table_area': tableArea,
-      'table_name': tableName,
-      'total_amount': totalAmount,
-      'total_paid': totalPaid,
-      'cash_paid': cashPaid,
-      'card_paid': cardPaid,
-      'discount_amount': discountAmount,
-      'date_closed': DateTime.now().toIso8601String(),
-    });
+  final db = await instance.database;
 
-    for (var orderMap in clonedOrders) {
-      await db.insert('receipt_items', {
-        'session_id': sessionId,
-        'receipt_id': receiptId,
-        'product_id': orderMap['product_id'],
-        'product_name': orderMap['product_name'],
-        'product_category': orderMap['product_category'],
-        'quantity': orderMap['quantity'],
-        'price': orderMap['price'],
-      });
-    }
+  final receiptId = await db.insert('receipts', {
+    'table_id': tableId,
+    'table_code': tableCode,
+    'table_area': tableArea,
+    'table_name': tableName,
+    'total_amount': totalAmount,
+    'total_paid': totalPaid,
+    'cash_paid': cashPaid,
+    'card_paid': cardPaid,
+    'discount_amount': discountAmount,
+    'date_closed': DateTime.now().toIso8601String(),
+  });
+
+  for (var orderMap in clonedOrders) {
+    await db.insert('receipt_items', {
+      'session_id': sessionId,
+      'receipt_id': receiptId,
+      'product_id': orderMap['product_id'],
+      'product_name': orderMap['product_name'],
+      'product_category': orderMap['product_category'],
+      'quantity': orderMap['quantity'],
+      'price': orderMap['price'],
+    });
   }
+}
 
   Future<List<Map<String, dynamic>>> getAllReceipts() async {
     final db = await instance.database;
@@ -642,6 +651,7 @@ Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
 
     final cashIncrement = paymentMethod == 'cash' ? amount : 0.0;
     final cardIncrement = paymentMethod == 'credit_card' ? amount : 0.0;
+    final realPaidIncrement = cashIncrement + cardIncrement;
 
     await db.rawUpdate(
       '''
@@ -653,24 +663,56 @@ Future<void> _ensureExpenseEventPaymentColumnsAndIndex(Database db) async {
       WHERE id = ?
       ''',
       [
-        amount,
+        realPaidIncrement,
         cashIncrement,
         cardIncrement,
         sessionId,
       ],
     );
   }
-  Future<List<Map<String, dynamic>>> getRecentTableSessions({
-    int limit = 20,
-  }) async {
-    final db = await instance.database;
 
-    return db.query(
-      'table_sessions',
-      orderBy: 'seated_at DESC',
-      limit: limit,
-    );
-  }
+  Future<List<Map<String, dynamic>>> getRecentTableSessions({
+  int limit = 20,
+}) async {
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      ts.id,
+      ts.table_id,
+      ts.table_code,
+      ts.table_area,
+      ts.table_name,
+      ts.seated_at,
+      ts.left_at,
+      ts.status,
+      ts.total_ordered,
+
+      COALESCE(pay.cash_paid, 0) AS cash_paid,
+      COALESCE(pay.card_paid, 0) AS card_paid,
+      COALESCE(pay.discount_amount, 0) AS discount_amount,
+
+      COALESCE(pay.cash_paid, 0) + COALESCE(pay.card_paid, 0) AS total_paid
+
+    FROM table_sessions ts
+    LEFT JOIN (
+      SELECT
+        session_id,
+        SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END) AS cash_paid,
+        SUM(CASE WHEN payment_method = 'credit_card' THEN amount ELSE 0 END) AS card_paid,
+        SUM(CASE WHEN payment_method = 'discount' THEN amount ELSE 0 END) AS discount_amount
+      FROM payment_events
+      GROUP BY session_id
+    ) pay
+      ON pay.session_id = ts.id
+
+    ORDER BY ts.seated_at DESC
+    LIMIT ?
+    ''',
+    [limit],
+  );
+}
 
   Future<List<Map<String, dynamic>>> getRecentOrderEvents({
     int limit = 50,
@@ -957,6 +999,7 @@ Future<List<Map<String, dynamic>>> getReceiptsWithSessionInfo({
       r.total_paid,
       r.cash_paid,
       r.card_paid,
+      r.discount_amount,
       r.date_closed,
 
       ts.seated_at,
@@ -989,10 +1032,11 @@ Future<List<Map<String, dynamic>>> getReceiptsWithSessionInfo({
 
     final result = await db.rawQuery(
       '''
-      SELECT SUM(total_price) AS total
-      FROM order_events
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM payment_events
       WHERE created_at >= ?
         AND created_at < ?
+        AND payment_method IN ('cash', 'credit_card')
       ''',
       [
         start.toIso8601String(),
@@ -1101,10 +1145,11 @@ Future<List<double>> getHourlyBusinessRevenueForDate(DateTime date) async {
     '''
     SELECT
       CAST(substr(created_at, 12, 2) AS INTEGER) AS hour,
-      SUM(total_price) AS total
-    FROM order_events
+      SUM(amount) AS total
+    FROM payment_events
     WHERE created_at >= ?
       AND created_at < ?
+      AND payment_method IN ('cash', 'credit_card')
     GROUP BY CAST(substr(created_at, 12, 2) AS INTEGER)
     ORDER BY hour ASC
     ''',
@@ -1127,6 +1172,7 @@ Future<List<double>> getHourlyBusinessRevenueForDate(DateTime date) async {
 
   return hourlyTotals;
 }
+
 Future<List<Map<String, dynamic>>> getDailyBusinessRevenueRowsBetween({
   required DateTime start,
   required DateTime end,
@@ -1379,7 +1425,34 @@ Future<List<Map<String, dynamic>>> getCashIncomeByDayBetween({
     FROM payment_events
     WHERE created_at >= ?
       AND created_at < ?
+      AND payment_method IN ('cash', 'credit_card')
     GROUP BY substr(created_at, 1, 10), payment_method
+    ORDER BY day ASC
+    ''',
+    [
+      start.toIso8601String(),
+      end.toIso8601String(),
+    ],
+  );
+}
+
+Future<List<Map<String, dynamic>>> getDiscountSummaryByDayBetween({
+  required DateTime start,
+  required DateTime end,
+}) async {
+  final db = await instance.database;
+
+  return db.rawQuery(
+    '''
+    SELECT
+      substr(created_at, 1, 10) AS day,
+      SUM(amount) AS total_amount,
+      COUNT(*) AS discount_count
+    FROM payment_events
+    WHERE created_at >= ?
+      AND created_at < ?
+      AND payment_method = 'discount'
+    GROUP BY substr(created_at, 1, 10)
     ORDER BY day ASC
     ''',
     [

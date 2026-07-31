@@ -116,9 +116,23 @@ class _GeneralStatsPage extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final activeTables = controller.tables.where((t) => t.status != TableStatus.empty).toList();
-        final activeOrderAmount = activeTables.fold(0.0, (sum, t) => sum + t.currentTotal);
-        final emptyTablesCount = controller.tables.length - activeTables.length;
+        final activeTables = controller.tables
+    .where((t) => t.status != TableStatus.empty)
+    .toList();
+
+    final activeOrderAmount = activeTables.fold<double>(0.0, (sum, table) {
+      final paidAmount = table.totalCashPaid + table.totalCardPaid;
+      final discountedTotal = table.currentTotal - table.totalDiscount;
+      final remainingLiveAmount = discountedTotal - paidAmount;
+
+      if (remainingLiveAmount <= 0) {
+        return sum;
+      }
+
+      return sum + remainingLiveAmount;
+    });
+
+    final emptyTablesCount = controller.tables.length - activeTables.length;
 
         return SingleChildScrollView(
           child: Padding(
@@ -146,9 +160,9 @@ class _GeneralStatsPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 24),
-                const SizedBox(
+                SizedBox(
                   height: 600,
-                  child: _LiveHourlyComparisonGraph(),
+                  child: _LiveHourlyComparisonGraph(controller: controller),
                 ),
               ],
             ),
@@ -216,7 +230,11 @@ class _GeneralStatsPage extends StatelessWidget {
 // CANLI SAATLİK CİRO KARŞILAŞTIRMA GRAFİĞİ
 // --------------------------------------------------------------------
 class _LiveHourlyComparisonGraph extends StatefulWidget {
-  const _LiveHourlyComparisonGraph();
+  final RestaurantController controller;
+
+  const _LiveHourlyComparisonGraph({
+    required this.controller,
+  });
 
   @override
   State<_LiveHourlyComparisonGraph> createState() =>
@@ -237,6 +255,9 @@ class _LiveHourlyComparisonGraphState
   @override
   void initState() {
     super.initState();
+
+    widget.controller.addListener(_handleControllerChanged);
+
     _loadGraphData();
 
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -246,9 +267,38 @@ class _LiveHourlyComparisonGraphState
 
   @override
   void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
     _timer?.cancel();
     super.dispose();
   }
+
+  void _handleControllerChanged() {
+  if (!mounted) return;
+
+  setState(() {
+    lastUpdated = DateTime.now();
+  });
+}
+
+double _activeOpenRemainingRevenue() {
+  final activeTables = widget.controller.tables.where(
+    (table) => table.status != TableStatus.empty,
+  );
+
+  double total = 0;
+
+  for (final table in activeTables) {
+    final paidAmount = table.totalCashPaid + table.totalCardPaid;
+    final discountedTotal = table.currentTotal - table.totalDiscount;
+    final remainingLiveAmount = discountedTotal - paidAmount;
+
+    if (remainingLiveAmount > 0) {
+      total += remainingLiveAmount;
+    }
+  }
+
+  return total;
+}
 
   Future<void> _loadGraphData() async {
     final now = DateTime.now();
@@ -403,6 +453,7 @@ Offset _tooltipOffsetForHour({
         now.hour + (now.minute / 60) + (now.second / 3600);
 
     cumulative += todayHourly[now.hour];
+    cumulative += _activeOpenRemainingRevenue();
 
     points.add(
       _HourlyGraphPoint(
@@ -436,7 +487,8 @@ Widget build(BuildContext context) {
   final completedDifference =
       _percentageDifference(todayCompleted, yesterdayCompleted);
 
-  final todayCurrentHour = todayHourly[lastUpdated.hour];
+  final todayCurrentHour =
+    todayHourly[lastUpdated.hour] + _activeOpenRemainingRevenue();
   final yesterdayCurrentHour = yesterdayHourly[lastUpdated.hour];
   final currentHourDifference =
       _percentageDifference(todayCurrentHour, yesterdayCurrentHour);
@@ -1805,6 +1857,12 @@ class _AllSalesPageState extends State<_AllSalesPage> {
   DateTime? startDate;
   DateTime? endDate;
 
+  final TextEditingController tableFilterController = TextEditingController();
+
+  bool filterCash = false;
+  bool filterCard = false;
+  bool filterDiscounted = false;
+
   @override
   void initState() {
     super.initState();
@@ -1812,6 +1870,12 @@ class _AllSalesPageState extends State<_AllSalesPage> {
     startDate = DateTime(now.year, now.month, now.day);
     endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
     _loadSales();
+  }
+
+  @override
+  void dispose() {
+    tableFilterController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSales() async {
@@ -1824,21 +1888,84 @@ class _AllSalesPageState extends State<_AllSalesPage> {
   }
 
   void _applyFilter() {
-    if (startDate == null || endDate == null) {
-      filteredReceipts = allReceipts;
-      return;
+  final tableFilter = tableFilterController.text.trim().toLowerCase();
+
+  filteredReceipts = allReceipts.where((r) {
+    final dateStr = r['date_closed'] as String?;
+    if (dateStr == null) return false;
+
+    final date = DateTime.tryParse(dateStr);
+    if (date == null) return false;
+
+    if (startDate != null && date.compareTo(startDate!) < 0) {
+      return false;
     }
 
-    filteredReceipts = allReceipts.where((r) {
-      final dateStr = r['date_closed'] as String?;
-      if (dateStr == null) return false;
-      final date = DateTime.tryParse(dateStr);
-      if (date == null) return false;
-      return date.compareTo(startDate!) >= 0 && date.compareTo(endDate!) <= 0;
-    }).toList();
-  }
+    if (endDate != null && date.compareTo(endDate!) > 0) {
+      return false;
+    }
 
-  Future<void> _selectDateRange() async {
+    if (tableFilter.isNotEmpty) {
+      final tableCode = r['table_code']?.toString().toLowerCase() ?? '';
+      final tableName = r['table_name']?.toString().toLowerCase() ?? '';
+      final tableArea = r['table_area']?.toString().toLowerCase() ?? '';
+
+      final combined = '$tableCode $tableName $tableArea';
+
+      if (!combined.contains(tableFilter)) {
+        return false;
+      }
+    }
+
+    final cashPaid = _toDouble(r['cash_paid']);
+    final cardPaid = _toDouble(r['card_paid']);
+    final discountAmount = _toDouble(r['discount_amount']);
+
+    if (filterCash && cashPaid <= 0) {
+      return false;
+    }
+
+    if (filterCard && cardPaid <= 0) {
+      return false;
+    }
+
+    if (filterDiscounted && discountAmount <= 0) {
+      return false;
+    }
+
+        return true;
+  }).toList();
+}
+
+Widget _buildFilterChip({
+  required String label,
+  required IconData icon,
+  required bool selected,
+  required VoidCallback onTap,
+}) {
+  return FilterChip(
+    selected: selected,
+    avatar: Icon(
+      icon,
+      size: 18,
+      color: selected ? Colors.white : AppTheme.primary,
+    ),
+    label: Text(label),
+    onSelected: (_) => onTap(),
+    selectedColor: AppTheme.primary,
+    checkmarkColor: Colors.white,
+    labelStyle: TextStyle(
+      color: selected ? Colors.white : AppTheme.textDark,
+      fontWeight: FontWeight.w700,
+    ),
+    backgroundColor: Colors.white,
+    side: BorderSide(
+      color: selected ? AppTheme.primary : AppTheme.textMuted.withOpacity(0.25),
+    ),
+  );
+}
+
+Future<void> _selectDateRange() async {
     DateTime tempStart = startDate ?? DateTime.now();
     DateTime tempEnd = endDate ?? DateTime.now();
 
@@ -1958,10 +2085,22 @@ class _AllSalesPageState extends State<_AllSalesPage> {
     showDialog(
       context: context,
       builder: (context) {
-        final String detailTitle = receipt['table_code'] != null 
-            ? '${receipt['table_code']} - ${receipt['table_name']} (${receipt['table_area']})' 
+        final String detailTitle = receipt['table_code'] != null
+            ? '${receipt['table_code']} - ${receipt['table_name']} (${receipt['table_area']})'
             : '${receipt['table_name']}';
-        
+
+        final netTotal = _toDouble(receipt['total_amount']);
+        final cashPaid = _toDouble(receipt['cash_paid']);
+        final cardPaid = _toDouble(receipt['card_paid']);
+        final discountAmount = _toDouble(receipt['discount_amount']);
+
+        final grossTotal = items.fold<double>(0, (sum, item) {
+          final quantity = (item['quantity'] as num).toDouble();
+          final price = (item['price'] as num).toDouble();
+
+          return sum + (price * quantity);
+        });
+
         return AlertDialog(
           backgroundColor: AppTheme.background,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -2014,47 +2153,106 @@ class _AllSalesPageState extends State<_AllSalesPage> {
                   ),
                 ),
                 const Divider(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Nakit Ödeme:', style: TextStyle(color: AppTheme.pastelGreen, fontWeight: FontWeight.bold)),
-                    Text(
-                      MoneyFormatter.formatTl((receipt['cash_paid'] as num?) ?? 0),
-                      style: const TextStyle(
-                        color: AppTheme.pastelGreen,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Kart Ödeme:', style: TextStyle(color: AppTheme.pastelBlue, fontWeight: FontWeight.bold)),
-                    Text(
-                      MoneyFormatter.formatTl((receipt['card_paid'] as num?) ?? 0),
-                      style: const TextStyle(
-                        color: AppTheme.pastelBlue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Toplam:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    Text(
-                      MoneyFormatter.formatTl(receipt['total_amount'] as num),
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
+
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    const Text(
+      'Ara Toplam:',
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    Text(
+      MoneyFormatter.formatTl(grossTotal),
+      style: const TextStyle(fontWeight: FontWeight.bold),
+    ),
+  ],
+),
+
+if (discountAmount > 0) ...[
+  const SizedBox(height: 8),
+  Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      const Text(
+        'Tanımlanan İndirim:',
+        style: TextStyle(
+          color: Colors.red,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      Text(
+        '-${MoneyFormatter.formatTl(discountAmount)}',
+        style: const TextStyle(
+          color: Colors.red,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ],
+  ),
+],
+
+const SizedBox(height: 8),
+
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    const Text(
+      'Nakit Ödeme:',
+      style: TextStyle(
+        color: AppTheme.pastelGreen,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+    Text(
+      MoneyFormatter.formatTl(cashPaid),
+      style: const TextStyle(
+        color: AppTheme.pastelGreen,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  ],
+),
+
+const SizedBox(height: 8),
+
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    const Text(
+      'Kart Ödeme:',
+      style: TextStyle(
+        color: AppTheme.pastelBlue,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+    Text(
+      MoneyFormatter.formatTl(cardPaid),
+      style: const TextStyle(
+        color: AppTheme.pastelBlue,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  ],
+),
+
+const Divider(height: 32),
+
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    const Text(
+      'Net Toplam:',
+      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+    ),
+    Text(
+      MoneyFormatter.formatTl(netTotal),
+      style: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  ],
+),
               ],
             ),
           ),
@@ -2090,84 +2288,176 @@ class _AllSalesPageState extends State<_AllSalesPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Tüm Satış Geçmişi',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-              ),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _selectDateRange,
-                    icon: const Icon(Icons.date_range),
-                    label: Text(
-                      startDate != null && endDate != null
-                          ? '${startDate!.day.toString().padLeft(2, '0')}.${startDate!.month.toString().padLeft(2, '0')}.${startDate!.year}  -  ${endDate!.day.toString().padLeft(2, '0')}.${endDate!.month.toString().padLeft(2, '0')}.${endDate!.year}'
-                          : 'Tarih Seç',
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primary,
-                      side: const BorderSide(color: AppTheme.primary),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    const Text(
+      'Tüm Satış Geçmişi',
+      style: TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+        color: AppTheme.textDark,
+      ),
+    ),
+    Row(
+      children: [
+        OutlinedButton.icon(
+          onPressed: _selectDateRange,
+          icon: const Icon(Icons.calendar_month),
+          label: Text(
+            '${startDate!.day.toString().padLeft(2, '0')}.${startDate!.month.toString().padLeft(2, '0')}.${startDate!.year}'
+            '  -  '
+            '${endDate!.day.toString().padLeft(2, '0')}.${endDate!.month.toString().padLeft(2, '0')}.${endDate!.year}',
+          ),
+        ),
+        const SizedBox(width: 16),
+        IconButton(
+          onPressed: _loadSales,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+    ),
+  ],
+),
+
+const SizedBox(height: 24),
+
+Container(
+  padding: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    color: AppTheme.surfaceLight,
+    borderRadius: BorderRadius.circular(16),
+    border: Border.all(
+      color: AppTheme.textMuted.withOpacity(0.12),
+    ),
+  ),
+  child: Row(
+    children: [
+      SizedBox(
+        width: 260,
+        child: TextField(
+          controller: tableFilterController,
+          decoration: InputDecoration(
+            labelText: 'Masa / Bölge Ara',
+            hintText: 'Örn: B-10, Bahçe, S-1',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: tableFilterController.text.trim().isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.clear),
                     onPressed: () {
-                      setState(() => isLoading = true);
-                      _loadSales();
+                      setState(() {
+                        tableFilterController.clear();
+                        _applyFilter();
+                      });
                     },
-                    tooltip: 'Yenile',
                   ),
-                ],
-              )
-            ],
-          ),
-          const SizedBox(height: 24),
-          
-          // ÖZET KARTI
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceLight,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildSummaryStat(
-                  'Toplam Ciro',
-                  MoneyFormatter.formatTl(totalAmount),
-                  Icons.attach_money,
-                  AppTheme.primary,
-                ),
-                _buildSummaryStat(
-                  'Masa (Adisyon)',
-                  '${filteredReceipts.length}',
-                  Icons.table_restaurant,
-                  AppTheme.textDark,
-                ),
-                _buildSummaryStat(
-                  'Nakit',
-                  MoneyFormatter.formatTl(totalCash),
-                  Icons.money,
-                  AppTheme.pastelGreen,
-                ),
-                _buildSummaryStat(
-                  'Kredi Kartı',
-                  MoneyFormatter.formatTl(totalCard),
-                  Icons.credit_card,
-                  AppTheme.pastelBlue,
-                ),
-              ],
-            ),
+            isDense: true,
           ),
-          
+          onChanged: (_) {
+            setState(() {
+              _applyFilter();
+            });
+          },
+        ),
+      ),
+      const SizedBox(width: 16),
+      _buildFilterChip(
+        label: 'Nakit',
+        icon: Icons.money,
+        selected: filterCash,
+        onTap: () {
+          setState(() {
+            filterCash = !filterCash;
+            _applyFilter();
+          });
+        },
+      ),
+      const SizedBox(width: 8),
+      _buildFilterChip(
+        label: 'Kredi Kartı',
+        icon: Icons.credit_card,
+        selected: filterCard,
+        onTap: () {
+          setState(() {
+            filterCard = !filterCard;
+            _applyFilter();
+          });
+        },
+      ),
+      const SizedBox(width: 8),
+      _buildFilterChip(
+        label: 'İndirimli Masa',
+        icon: Icons.discount,
+        selected: filterDiscounted,
+        onTap: () {
+          setState(() {
+            filterDiscounted = !filterDiscounted;
+            _applyFilter();
+          });
+        },
+      ),
+      const Spacer(),
+      TextButton.icon(
+        onPressed: () {
+          setState(() {
+            tableFilterController.clear();
+            filterCash = false;
+            filterCard = false;
+            filterDiscounted = false;
+            _applyFilter();
+          });
+        },
+        icon: const Icon(Icons.restart_alt),
+        label: const Text('Filtreleri Temizle'),
+      ),
+    ],
+  ),
+),
+
+const SizedBox(height: 24),
+
+Container(
+  padding: const EdgeInsets.all(24),
+  decoration: BoxDecoration(
+    color: AppTheme.surfaceLight,
+    borderRadius: BorderRadius.circular(20),
+    border: Border.all(color: AppTheme.primary.withOpacity(0.3)),
+  ),
+  child: Row(
+    mainAxisAlignment: MainAxisAlignment.spaceAround,
+    children: [
+      _buildSummaryStat(
+        'Toplam Ciro',
+        MoneyFormatter.formatTl(totalAmount),
+        Icons.attach_money,
+        AppTheme.primary,
+      ),
+      _buildSummaryStat(
+        'Masa (Adisyon)',
+        '${filteredReceipts.length}',
+        Icons.table_restaurant,
+        AppTheme.textDark,
+      ),
+      _buildSummaryStat(
+        'Nakit',
+        MoneyFormatter.formatTl(totalCash),
+        Icons.money,
+        AppTheme.pastelGreen,
+      ),
+      _buildSummaryStat(
+        'Kredi Kartı',
+        MoneyFormatter.formatTl(totalCard),
+        Icons.credit_card,
+        AppTheme.pastelBlue,
+      ),
+    ],
+  ),
+),
           const SizedBox(height: 24),
-          
+
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -2490,8 +2780,13 @@ class _SessionsList extends StatelessWidget {
 
         final sessionId = (item['id'] as num?)?.toInt();
         final totalOrdered = _toDouble(item['total_ordered']);
-        final totalPaid = _toDouble(item['total_paid']);
-        final remaining = totalOrdered - totalPaid;
+        final cashPaid = _toDouble(item['cash_paid']);
+        final cardPaid = _toDouble(item['card_paid']);
+        final discountAmount = _toDouble(item['discount_amount']);
+
+        final realPaid = cashPaid + cardPaid;
+        final netRequired = totalOrdered - discountAmount;
+        final remaining = netRequired - realPaid;
 
         return Card(
           elevation: 0,
@@ -2549,10 +2844,13 @@ void _showSessionDetailsDialog({
   required Map<String, dynamic> session,
 }) {
   final totalOrdered = _toDouble(session['total_ordered']);
-  final totalPaid = _toDouble(session['total_paid']);
   final cashPaid = _toDouble(session['cash_paid']);
   final cardPaid = _toDouble(session['card_paid']);
-  final remaining = totalOrdered - totalPaid;
+  final discountAmount = _toDouble(session['discount_amount']);
+
+  final realPaid = cashPaid + cardPaid;
+  final netRequired = totalOrdered - discountAmount;
+  final remaining = netRequired - realPaid;
 
   showDialog(
     context: context,
@@ -2585,7 +2883,9 @@ void _showSessionDetailsDialog({
                     children: [
                       _SessionSummaryBox(
                         totalOrdered: totalOrdered,
-                        totalPaid: totalPaid,
+                        discountAmount: discountAmount,
+                        netRequired: netRequired,
+                        totalPaid: realPaid,
                         cashPaid: cashPaid,
                         cardPaid: cardPaid,
                         remaining: remaining,
@@ -2658,6 +2958,8 @@ void _showSessionDetailsDialog({
 }
 
 class _SessionSummaryBox extends StatelessWidget {
+  final double discountAmount;
+  final double netRequired;
   final double totalOrdered;
   final double totalPaid;
   final double cashPaid;
@@ -2668,14 +2970,16 @@ class _SessionSummaryBox extends StatelessWidget {
   final dynamic status;
 
   const _SessionSummaryBox({
-    required this.totalOrdered,
-    required this.totalPaid,
-    required this.cashPaid,
-    required this.cardPaid,
-    required this.remaining,
-    required this.seatedAt,
-    required this.leftAt,
-    required this.status,
+  required this.totalOrdered,
+  required this.discountAmount,
+  required this.netRequired,
+  required this.totalPaid,
+  required this.cashPaid,
+  required this.cardPaid,
+  required this.remaining,
+  required this.seatedAt,
+  required this.leftAt,
+  required this.status,
   });
 
   @override
@@ -2702,6 +3006,14 @@ class _SessionSummaryBox extends StatelessWidget {
           _summaryLine('Kalkış', _formatDateTime(leftAt)),
           const Divider(height: 20),
           _summaryLine('Toplam Sipariş', _formatMoney(totalOrdered)),
+
+          if (discountAmount > 0)
+            _summaryLine(
+              'Tanımlanan İndirim',
+              '-${_formatMoney(discountAmount)}',
+            ),
+
+          _summaryLine('Ödenmesi Gereken', _formatMoney(netRequired)),
           _summaryLine('Toplam Ödenen', _formatMoney(totalPaid)),
           _summaryLine('Kalan', _formatMoney(remaining < 0 ? 0 : remaining)),
           const Divider(height: 20),
@@ -3045,18 +3357,24 @@ String _formatMoney(dynamic value) {
 }
 
 String _formatPaymentInfo(Map<String, dynamic> item) {
-  final totalPaid = _toDouble(item['total_paid']);
   final cashPaid = _toDouble(item['cash_paid']);
   final cardPaid = _toDouble(item['card_paid']);
+  final discountAmount = _toDouble(item['discount_amount']);
 
-  if (totalPaid <= 0) {
+  final realPaid = cashPaid + cardPaid;
+
+  if (realPaid <= 0 && discountAmount <= 0) {
     return 'Ödeme: Henüz ödeme alınmadı';
   }
 
-  final cashPercentage = totalPaid == 0 ? 0 : (cashPaid / totalPaid) * 100;
-  final cardPercentage = totalPaid == 0 ? 0 : (cardPaid / totalPaid) * 100;
+  final cashPercentage = realPaid == 0 ? 0 : (cashPaid / realPaid) * 100;
+  final cardPercentage = realPaid == 0 ? 0 : (cardPaid / realPaid) * 100;
 
-  return 'Ödeme: ${_formatMoney(totalPaid)} | '
+  final discountText = discountAmount > 0
+      ? ' | İndirim ${_formatMoney(discountAmount)}'
+      : '';
+
+  return 'Ödeme: ${_formatMoney(realPaid)}$discountText | '
       'Nakit ${_formatMoney(cashPaid)} (%${cashPercentage.toStringAsFixed(1)}) | '
       'Kart ${_formatMoney(cardPaid)} (%${cardPercentage.toStringAsFixed(1)})';
 }

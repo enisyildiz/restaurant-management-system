@@ -170,7 +170,8 @@ class RestaurantController extends ChangeNotifier {
           'action': 'full_state',
           'tables': tables.map((t) => t.toJson()).toList(),
           'menu': _menu.map((p) => p.toJson()).toList(),
-          'categories': editableCategories,
+          'categories': _categoriesWithPrintSettings(),
+          'categoryPrintSettings': categoryPrintSettings,
         });
       }
     } else if (action == 'full_state') {
@@ -187,10 +188,33 @@ class RestaurantController extends ChangeNotifier {
       }
       if (data.containsKey('categories')) {
         final remoteCatData = data['categories'] as List<dynamic>;
-        editableCategories = remoteCatData.map((e) => e.toString()).toList();
+
+        editableCategories = [];
+        categoryPrintSettings = {};
+
+        for (final item in remoteCatData) {
+          if (item is Map) {
+            final key = item.keys.first.toString();
+            editableCategories.add(key);
+            categoryPrintSettings[key] = item[key] as bool? ?? true;
+          } else if (item is String) {
+            editableCategories.add(item);
+            categoryPrintSettings[item] = true;
+          }
+        }
+
         if (editableCategories.isNotEmpty && selectedCategory.isEmpty) {
           selectedCategory = editableCategories.first;
         }
+      }
+
+      if (data.containsKey('categoryPrintSettings')) {
+        final remoteSettings =
+            data['categoryPrintSettings'] as Map<String, dynamic>;
+
+        categoryPrintSettings = remoteSettings.map(
+          (key, value) => MapEntry(key, value as bool? ?? true),
+        );
       }
       if (data.containsKey('areas')) {
         final remoteAreaData = data['areas'] as List<dynamic>;
@@ -231,8 +255,14 @@ class RestaurantController extends ChangeNotifier {
       _showSnackbar('Bölgeler sunucudan güncellendi.', false);
     } else if (action == 'sync_category_settings') {
       final remoteSettings = data['settings'] as Map<String, dynamic>;
-      categoryPrintSettings = remoteSettings.map((key, value) => MapEntry(key, value as bool));
+
+      categoryPrintSettings = remoteSettings.map(
+        (key, value) => MapEntry(key, value as bool? ?? true),
+      );
+
       notifyListeners();
+
+      unawaited(saveCategoryPrintSettings(categoryPrintSettings));
     } else if (action == 'sync_tables') {
       final remoteTablesData = data['tables'] as List<dynamic>;
       final remoteTables = remoteTablesData.map((e) => TableModel.fromJson(e)).toList();
@@ -575,6 +605,14 @@ class RestaurantController extends ChangeNotifier {
     }
   }
 
+  List<Map<String, bool>> _categoriesWithPrintSettings() {
+    return editableCategories.map((category) {
+      return {
+        category: categoryPrintSettings[category] ?? true,
+      };
+    }).toList();
+  }
+
   Future<void> saveCategoryPrintSettings(Map<String, bool> newSettings) async {
     categoryPrintSettings = newSettings;
     notifyListeners();
@@ -588,7 +626,7 @@ class RestaurantController extends ChangeNotifier {
         await appDocDirFolder.create(recursive: true);
       }
       
-      final List<Map<String, bool>> combined = editableCategories.map((c) => {c: categoryPrintSettings[c] ?? true}).toList();
+      final combined = _categoriesWithPrintSettings();
       await configFile.writeAsString(json.encode(combined));
       
       if (_isAdminDevice && _networkService != null) {
@@ -621,7 +659,7 @@ class RestaurantController extends ChangeNotifier {
         await appDocDirFolder.create(recursive: true);
       }
 
-      final List<Map<String, bool>> combined = editableCategories.map((c) => {c: categoryPrintSettings[c] ?? true}).toList();
+      final combined = _categoriesWithPrintSettings();
       await configFile.writeAsString(json.encode(combined));
 
       if (_isAdminDevice && _networkService != null) {
@@ -840,10 +878,13 @@ void _closeSessionIfAdmin(TableModel table) {
   final seatedAt = table.seatedAt ?? leftAt;
 
   final totalOrdered = table.currentTotal;
-  final totalPaid = table.totalPaid;
   final cashPaid = table.totalCashPaid;
   final cardPaid = table.totalCardPaid;
   final discountAmount = table.totalDiscount;
+
+  // Accounting rule:
+  // totalPaid in table_sessions should mean real collected money only.
+  final totalPaid = cashPaid + cardPaid;
 
   unawaited(() async {
     try {
@@ -1128,9 +1169,15 @@ void removeProductFromTable(
   void checkoutTable(int tableId, {bool fromNetwork = false}) {
     final table = tables.firstWhere((t) => t.id == tableId);
     
-    // Veritabanı sadece YÖNETİCİ (Admin) bilgisayarında kayıt edilecek
-    // İster Admin kendisi kapasın (!fromNetwork), ister Garson kapasın ve ağdan gelsin (fromNetwork).
-    // İki durumda da sadece Admin DB'ye yazar. Garson asla yazmaz.
+  // DB can be written only from the Admin PC
+  if (!_isAdminDevice && !fromNetwork) {
+    _showSnackbar(
+      'Masa kapatma işlemi sadece kasa/yönetici kullanıcısı tarafından yapılabilir.',
+      true,
+    );
+    return;
+  }
+  
   if (currentUser?.role == UserRole.admin && table.orders.isNotEmpty) {
     DatabaseService.instance.saveClosedTable(table);
     _closeSessionIfAdmin(table);
@@ -1427,11 +1474,14 @@ void removeProductFromTable(
 
       if (target == PrintTarget.cashier) {
         bytes += generator.hr();
+
         bytes += generator.row([
           PosColumn(
             text: 'TOPLAM:',
             width: 6,
-            styles: const PosStyles(bold: true),
+            styles: const PosStyles(
+              bold: true,
+            ),
           ),
           PosColumn(
             text: MoneyFormatter.formatTlText(table.currentTotal),
@@ -1442,6 +1492,8 @@ void removeProductFromTable(
             ),
           ),
         ]);
+
+        bytes += generator.emptyLines(1);
       }
 
       if (target == PrintTarget.kitchen) {
@@ -1647,6 +1699,14 @@ void removeProductFromTable(
     required PaymentMethod method,
     bool fromNetwork = false,
   }) {
+    if (!_isAdminDevice && !fromNetwork) {
+      _showSnackbar(
+        'Ödeme alma işlemi sadece kasa/yönetici kullanıcısı tarafından yapılabilir.',
+        true,
+      );
+      return;
+    }
+
     if (amount <= 0) return;
 
     final remaining = remainingForTable(tableId);
@@ -1718,20 +1778,32 @@ void removeProductFromTable(
   }
 
   void _queueAction(Map<String, dynamic> action) {
-    if (currentUser?.role.name == 'admin') {
-      _networkService?.sendMessage(action);
-      return;
+  action['eventId'] ??= _generateEventId();
+
+  final eventId = action['eventId']?.toString();
+
+  if (currentUser?.role.name == 'admin') {
+    if (eventId != null) {
+      _processedEvents.add(eventId);
     }
-    
-    action['eventId'] ??= _generateEventId();
-    
-    final existingIndex = _offlineQueue.indexWhere((e) => e['eventId'] == action['eventId']);
-    if (existingIndex == -1) {
-      _offlineQueue.add(action);
-      _saveOfflineQueue();
-      LoggerService.instance.info('Added action to offline queue. Queue size: ${_offlineQueue.length}');
-    }
-    
+
     _networkService?.sendMessage(action);
+    return;
   }
+
+  final existingIndex = _offlineQueue.indexWhere(
+    (e) => e['eventId'] == action['eventId'],
+  );
+
+  if (existingIndex == -1) {
+    _offlineQueue.add(action);
+    _saveOfflineQueue();
+
+    LoggerService.instance.info(
+      'Added action to offline queue. Queue size: ${_offlineQueue.length}',
+    );
+  }
+
+  _networkService?.sendMessage(action);
+}
 }

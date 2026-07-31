@@ -1224,6 +1224,7 @@ class _CashReportPageState extends State<_CashReportPage> {
 
   List<_ReportDateColumn> dateColumns = [];
   List<_CashReportRow> incomeRows = [];
+  List<_CashReportRow> discountRows = [];
   List<_CashReportRow> expenseRows = [];
   List<_CashReportRow> summaryRows = [];
 
@@ -1332,6 +1333,12 @@ class _CashReportPageState extends State<_CashReportPage> {
       end: queryEnd,
     );
 
+    final discountData =
+        await DatabaseService.instance.getDiscountSummaryByDayBetween(
+      start: start,
+      end: queryEnd,
+    );
+
     final expenseData =
         await DatabaseService.instance.getExpenseSummaryByReasonAndDayBetween(
       start: start,
@@ -1345,6 +1352,7 @@ class _CashReportPageState extends State<_CashReportPage> {
     final cashIncomeRow = _emptyRow('Nakit');
     final cardIncomeRow = _emptyRow('Kredi Kartı');
     final totalIncomeRow = _emptyRow('Toplam Gelir');
+    final discountRow = _emptyRow('Tanımlanan İndirimler');
 
     for (final row in incomeData) {
       final day = row['day']?.toString();
@@ -1363,6 +1371,16 @@ class _CashReportPageState extends State<_CashReportPage> {
 
       totalIncomeRow.valuesByDay[day] =
           (totalIncomeRow.valuesByDay[day] ?? 0) + amount;
+    }
+
+    for (final row in discountData) {
+      final day = row['day']?.toString();
+      if (day == null) continue;
+
+      final amount = _toDouble(row['total_amount']);
+
+      discountRow.valuesByDay[day] =
+          (discountRow.valuesByDay[day] ?? 0) + amount;
     }
 
     final expenseRowMap = <String, _CashReportRow>{};
@@ -1411,6 +1429,10 @@ class _CashReportPageState extends State<_CashReportPage> {
         cashIncomeRow,
         cardIncomeRow,
         totalIncomeRow.copyWith(isTotal: true),
+      ];
+
+      discountRows = [
+        discountRow.copyWith(isTotal: true),
       ];
 
       expenseRows = [
@@ -1565,6 +1587,18 @@ class _CashReportPageState extends State<_CashReportPage> {
                 dateColumns: dateColumns,
                 hasTotalColumn: hasTotalColumn,
                 positiveValues: true,
+              ),
+
+              const SizedBox(height: 24),
+
+              _CashReportTableCard(
+                title: 'Tanımlanan İndirimler',
+                icon: Icons.discount,
+                leadingColumnTitle: 'İndirim',
+                rows: discountRows,
+                dateColumns: dateColumns,
+                hasTotalColumn: hasTotalColumn,
+                positiveValues: false,
               ),
 
               const SizedBox(height: 24),
