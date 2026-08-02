@@ -137,15 +137,15 @@ Widget _buildMenuPanel(TableModel table) {
                 children: [
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.all(12.0),
+                      padding: const EdgeInsets.all(8.0),
                       child: GridView.builder(
                         itemCount: widget.controller.filteredMenu.length,
                         gridDelegate:
                             SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: productCardMaxWidth,
-                          mainAxisExtent: 92,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
+                          mainAxisExtent: 65,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
                         ),
                         itemBuilder: (context, index) {
                           final product =
@@ -385,7 +385,7 @@ Widget _buildProductCard(Product product) {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -400,15 +400,6 @@ Widget _buildProductCard(Product product) {
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 7),
-              Text(
-                MoneyFormatter.formatTl(product.price),
-                style: const TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.black87,
-                ),
               ),
             ],
           ),
