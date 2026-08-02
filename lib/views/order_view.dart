@@ -251,6 +251,22 @@ Widget _buildActionButtonStrip(TableModel table) {
                 onPressed: table.orders.isEmpty
                     ? null
                     : () {
+                        if (table.status == TableStatus.askedForCheck) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('Masa kilitli! Taşımak için kilidi kaldırın.'),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                              margin: EdgeInsets.only(
+                                bottom: MediaQuery.of(context).size.height - 120,
+                                left: 20,
+                                right: 20,
+                              ),
+                            ),
+                          );
+                          return;
+                        }
                         _showMoveTableDialog(
                           context,
                           widget.controller,
@@ -279,14 +295,18 @@ Widget _buildActionButtonStrip(TableModel table) {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.grey.withOpacity(0.12),
-                  ),
-                ),
+              child: _buildOrderActionButton(
+                text: 'Kilidi Kaldır',
+                color: (table.status == TableStatus.askedForCheck &&
+                        widget.controller.currentUser?.role.name == 'admin')
+                    ? Colors.orange.shade300
+                    : Colors.grey.shade300,
+                onPressed: (table.status == TableStatus.askedForCheck &&
+                        widget.controller.currentUser?.role.name == 'admin')
+                    ? () {
+                        widget.controller.unlockTable(table.id);
+                      }
+                    : null,
               ),
             ),
           ],
@@ -410,6 +430,24 @@ Widget _buildProductCard(Product product) {
 }
 
 void _addProductToTable(Product product) {
+  final table = widget.controller.tables.firstWhere((t) => t.id == widget.tableId);
+  if (table.status == TableStatus.askedForCheck) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Masa kilitli! Ürün eklemek için kilidi kaldırın.'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).size.height - 120,
+          left: 20,
+          right: 20,
+        ),
+      ),
+    );
+    return;
+  }
+
   final beforeIds = widget.controller
       .ordersForTable(widget.tableId)
       .map((item) => item.id)
@@ -669,90 +707,118 @@ Widget _buildAdisyonBottomButtons(TableModel table) {
 
         Row(
           children: [
-            Expanded(
-              child: SizedBox(
-                height: 46,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.pastelYellow,
-                    foregroundColor: AppTheme.textDark,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+            if (widget.controller.currentUser?.role.name == 'admin') ...[
+              Expanded(
+                child: SizedBox(
+                  height: 46,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.pastelYellow,
+                      foregroundColor: AppTheme.textDark,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                  ),
-                  onPressed: table.orders.isEmpty
-                    ? null
-                    : () async {
-                        if (!canTakePayment) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Ödeme alma işlemi sadece kasa/yönetici kullanıcısı tarafından yapılabilir.',
+                    onPressed: table.orders.isEmpty
+                      ? null
+                      : () async {
+                          if (!canTakePayment) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Ödeme alma işlemi sadece kasa/yönetici kullanıcısı tarafından yapılabilir.',
+                                ),
+                                backgroundColor: Colors.red,
                               ),
-                              backgroundColor: Colors.red,
+                            );
+                            return;
+                          }
+
+                          final paymentCompleted =
+                              await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PaymentView(
+                                controller: widget.controller,
+                                tableId: widget.tableId,
+                              ),
                             ),
                           );
-                          return;
-                        }
 
-                        final paymentCompleted =
-                            await Navigator.push<bool>(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PaymentView(
-                              controller: widget.controller,
-                              tableId: widget.tableId,
-                            ),
-                          ),
-                        );
-
-                        if (paymentCompleted == true && context.mounted) {
-                          Navigator.pop(context);
-                        }
-                      },
-                  child: const Text(
-                    'Ödeme Al',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 92,
-              height: 46,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade300,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                onPressed: () async {
-                  await _closeAdisyon(table);
-                },
-                child: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(
-                      'Adisyonu\nKapat',
-                      textAlign: TextAlign.center,
+                          if (paymentCompleted == true && context.mounted) {
+                            Navigator.pop(context);
+                          }
+                        },
+                    child: const Text(
+                      'Ödeme Al',
                       style: TextStyle(
-                        fontSize: 12,
-                        height: 1.0,
+                        fontSize: 18,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 92,
+                height: 46,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade300,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () async {
+                    await _closeAdisyon(table);
+                  },
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        'Adisyonu\nKapat',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.0,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ] else ...[
+              Expanded(
+                child: SizedBox(
+                  height: 46,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade300,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: () async {
+                      await _closeAdisyon(table);
+                    },
+                    child: const Text(
+                      'Adisyonu Kapat',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ],
@@ -1083,6 +1149,23 @@ void _toggleOrderItemSelection({
 }
 
 Future<void> _removeSelectedOrderItems(TableModel table) async {
+  if (table.status == TableStatus.askedForCheck) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Masa kilitli! Ürün çıkarmak için kilidi kaldırın.'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).size.height - 120,
+          left: 20,
+          right: 20,
+        ),
+      ),
+    );
+    return;
+  }
+
   final removableIds = _selectedOrderItemIds
       .where(
         (id) => _canSelectOrderItem(

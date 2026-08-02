@@ -313,6 +313,11 @@ class RestaurantController extends ChangeNotifier {
     data['tableId'],
     fromNetwork: true,
   );
+} else if (action == 'unlock_table') {
+  unlockTable(
+    data['tableId'],
+    fromNetwork: true,
+  );
 } if (eventId != null && currentUser?.role.name == 'admin') {
       _networkService?.sendMessage({'action': 'ack', 'eventId': eventId});
     }
@@ -469,7 +474,27 @@ class RestaurantController extends ChangeNotifier {
         'action': 'mark_table_asked_for_check',
         'tableId': tableId,
       };
+      _queueAction(actionData);
+    }
+  }
 
+  void unlockTable(int tableId, {bool fromNetwork = false}) {
+    if (currentUser?.role.name != 'admin' && !fromNetwork) {
+      return; // Sadece adminler veya ağdan gelen istekler kilidi açabilir.
+    }
+
+    final index = tables.indexWhere((t) => t.id == tableId);
+    if (index == -1) return;
+
+    tables[index].status = TableStatus.occupied;
+    notifyListeners();
+    _saveTablesSilent();
+
+    if (!fromNetwork && _networkService != null) {
+      final actionData = {
+        'action': 'unlock_table',
+        'tableId': tableId,
+      };
       _queueAction(actionData);
     }
   }
