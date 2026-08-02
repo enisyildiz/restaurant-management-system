@@ -34,7 +34,7 @@ class UserService {
 
   Future<File> get _file async {
     final Directory appDocDir = await getApplicationDocumentsDirectory();
-    final String path = p.join(appDocDir.path, 'RestaurantApp', 'users.json');
+    final String path = p.join(appDocDir.path, 'KarPos', 'users.json');
     return File(path);
   }
 

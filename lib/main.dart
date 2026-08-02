@@ -14,7 +14,7 @@ void main() async {
   
   try {
     final Directory appDocDir = await getApplicationDocumentsDirectory();
-    final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'config.json');
+    final String configPath = p.join(appDocDir.path, 'KarPos', 'config.json');
     final File configFile = File(configPath);
     
     if (await configFile.exists()) {

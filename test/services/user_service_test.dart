@@ -24,7 +24,7 @@ void main() {
   group('UserService JSON Integration Tests', () {
     setUp(() async {
       // Her testten önce listeyi temizle ve dosyayı boşalt
-      final file = File('${Directory.systemTemp.path}/RestaurantApp/users.json');
+      final file = File('${Directory.systemTemp.path}/KarPos/users.json');
       if (file.existsSync()) {
         file.deleteSync();
       }

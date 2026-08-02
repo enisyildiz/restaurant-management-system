@@ -10,7 +10,7 @@ class LoggerService {
   Future<void> log(String level, String message) async {
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String logsDirPath = join(appDocDir.path, 'RestaurantApp', 'Logs');
+      final String logsDirPath = join(appDocDir.path, 'KarPos', 'Logs');
       
       final Directory logsDir = Directory(logsDirPath);
       if (!await logsDir.exists()) {

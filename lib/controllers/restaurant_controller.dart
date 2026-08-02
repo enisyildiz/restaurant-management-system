@@ -400,7 +400,7 @@ class RestaurantController extends ChangeNotifier {
   Future<void> loadTables() async {
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'tables.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'tables.json');
       final File configFile = File(configPath);
       
       String response;
@@ -436,7 +436,7 @@ class RestaurantController extends ChangeNotifier {
 
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'tables.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'tables.json');
       final File configFile = File(configPath);
       
       final String jsonStr = json.encode(tables.map((e) => e.toJson()).toList());
@@ -502,7 +502,7 @@ class RestaurantController extends ChangeNotifier {
   Future<void> _saveTablesSilent() async {
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'tables.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'tables.json');
       final File configFile = File(configPath);
       final String jsonStr = json.encode(tables.map((e) => e.toJson()).toList());
       await configFile.writeAsString(jsonStr);
@@ -514,7 +514,7 @@ class RestaurantController extends ChangeNotifier {
   Future<void> loadMenu() async {
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'menu.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'menu.json');
       final File configFile = File(configPath);
       
       String response;
@@ -559,7 +559,7 @@ class RestaurantController extends ChangeNotifier {
 
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'menu.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'menu.json');
       final File configFile = File(configPath);
       
       final String jsonStr = json.encode(_menu.map((e) => e.toJson()).toList());
@@ -581,7 +581,7 @@ class RestaurantController extends ChangeNotifier {
   Future<void> loadCategories() async {
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'categories.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'categories.json');
       final File configFile = File(configPath);
       
       if (await configFile.exists()) {
@@ -616,7 +616,7 @@ class RestaurantController extends ChangeNotifier {
       }
       
       // Delete old category_settings.json if it exists to clean up
-      final String printConfigPath = p.join(appDocDir.path, 'RestaurantApp', 'category_settings.json');
+      final String printConfigPath = p.join(appDocDir.path, 'KarPos', 'category_settings.json');
       final File printConfigFile = File(printConfigPath);
       if (await printConfigFile.exists()) {
         try {
@@ -643,7 +643,7 @@ class RestaurantController extends ChangeNotifier {
     notifyListeners();
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'categories.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'categories.json');
       final File configFile = File(configPath);
       
       final Directory appDocDirFolder = Directory(p.dirname(configPath));
@@ -676,7 +676,7 @@ class RestaurantController extends ChangeNotifier {
 
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'categories.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'categories.json');
       final File configFile = File(configPath);
       
       final Directory appDocDirFolder = Directory(p.dirname(configPath));
@@ -703,7 +703,7 @@ class RestaurantController extends ChangeNotifier {
   Future<void> loadAreas() async {
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'areas.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'areas.json');
       final File configFile = File(configPath);
       
       if (await configFile.exists()) {
@@ -730,7 +730,7 @@ class RestaurantController extends ChangeNotifier {
 
     try {
       final Directory appDocDir = await getApplicationDocumentsDirectory();
-      final String configPath = p.join(appDocDir.path, 'RestaurantApp', 'areas.json');
+      final String configPath = p.join(appDocDir.path, 'KarPos', 'areas.json');
       final File configFile = File(configPath);
       
       final String jsonStr = json.encode(editableAreas);

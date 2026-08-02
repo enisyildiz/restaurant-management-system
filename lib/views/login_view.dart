@@ -112,20 +112,10 @@ class _LoginViewState extends State<LoginView> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.restaurant_menu,
-                      size: 64,
-                      color: AppTheme.primaryDark,
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Restoran Yönetimi',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textDark,
-                        letterSpacing: 1.2,
-                      ),
+                    Image.asset(
+                      'assets/images/logo.png',
+                      width: 280, // Adjust this as needed, it will scale proportionately
+                      fit: BoxFit.contain,
                     ),
                     const SizedBox(height: 8),
                     Text(

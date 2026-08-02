@@ -181,7 +181,7 @@ class LicenseService {
 
   Future<File> get _offlineFile async {
     final Directory appDocDir = await getApplicationDocumentsDirectory();
-    final String path = p.join(appDocDir.path, 'RestaurantApp', 'sys_cache.bin');
+    final String path = p.join(appDocDir.path, 'KarPos', 'sys_cache.bin');
     return File(path);
   }
 

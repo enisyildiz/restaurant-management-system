@@ -25,7 +25,7 @@ class DatabaseService {
     
     // Uygulama versiyonu degisse bile verilerin silinmemesi icin kalici bir konum seciyoruz.
     final Directory appDocDir = await getApplicationDocumentsDirectory();
-    final String dbPath = join(appDocDir.path, 'RestaurantApp', filePath);
+    final String dbPath = join(appDocDir.path, 'KarPos', filePath);
     
     final Directory appDocDirFolder = Directory(dirname(dbPath));
     if (!await appDocDirFolder.exists()) {
