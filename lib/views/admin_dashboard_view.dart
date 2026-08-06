@@ -1888,6 +1888,8 @@ class _AllSalesPageState extends State<_AllSalesPage> {
   DateTime? endDate;
 
   final TextEditingController tableFilterController = TextEditingController();
+  final TextEditingController minPriceController = TextEditingController();
+  final TextEditingController maxPriceController = TextEditingController();
 
   bool filterCash = false;
   bool filterCard = false;
@@ -1905,6 +1907,8 @@ class _AllSalesPageState extends State<_AllSalesPage> {
   @override
   void dispose() {
     tableFilterController.dispose();
+    minPriceController.dispose();
+    maxPriceController.dispose();
     super.dispose();
   }
 
@@ -1919,6 +1923,8 @@ class _AllSalesPageState extends State<_AllSalesPage> {
 
   void _applyFilter() {
   final tableFilter = tableFilterController.text.trim().toLowerCase();
+  final minPrice = double.tryParse(minPriceController.text.trim());
+  final maxPrice = double.tryParse(maxPriceController.text.trim());
 
   filteredReceipts = allReceipts.where((r) {
     final dateStr = r['date_closed'] as String?;
@@ -1947,9 +1953,13 @@ class _AllSalesPageState extends State<_AllSalesPage> {
       }
     }
 
+    final totalAmount = _toDouble(r['total_amount']);
     final cashPaid = _toDouble(r['cash_paid']);
     final cardPaid = _toDouble(r['card_paid']);
     final discountAmount = _toDouble(r['discount_amount']);
+
+    if (minPrice != null && totalAmount < minPrice) return false;
+    if (maxPrice != null && totalAmount > maxPrice) return false;
 
     if (filterCash && cashPaid <= 0) {
       return false;
@@ -2394,6 +2404,34 @@ Container(
         ),
       ),
       const SizedBox(width: 16),
+      SizedBox(
+        width: 100,
+        child: TextField(
+          controller: minPriceController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Min ₺',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            isDense: true,
+          ),
+          onChanged: (_) => setState(() => _applyFilter()),
+        ),
+      ),
+      const SizedBox(width: 8),
+      SizedBox(
+        width: 100,
+        child: TextField(
+          controller: maxPriceController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Max ₺',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            isDense: true,
+          ),
+          onChanged: (_) => setState(() => _applyFilter()),
+        ),
+      ),
+      const SizedBox(width: 16),
       _buildFilterChip(
         label: 'Nakit',
         icon: Icons.money,
@@ -2434,6 +2472,8 @@ Container(
         onPressed: () {
           setState(() {
             tableFilterController.clear();
+            minPriceController.clear();
+            maxPriceController.clear();
             filterCash = false;
             filterCard = false;
             filterDiscounted = false;
