@@ -7,6 +7,7 @@ import '../services/database_service.dart';
 import 'dart:async';
 import '../utils/money_formatter.dart';
 import 'widgets/user_management_page.dart';
+import 'product_analytics_view.dart';
 
 class AdminDashboardView extends StatefulWidget {
   final RestaurantController controller;
@@ -73,6 +74,11 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
                 selectedIcon: Icon(Icons.calendar_month),
                 label: Text('Haftalık Satış Verileri'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.insights_outlined),
+                selectedIcon: Icon(Icons.insights),
+                label: Text('Ürün Analizleri'),
+              ),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
@@ -97,6 +103,8 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
         return const _AnalyticsLogPage();
       case 4:
         return const _WeeklySalesDataPage(); 
+      case 5:
+        return const ProductAnalyticsView();
       default:
         return const Center(child: Text('Sayfa bulunamadı'));
     }

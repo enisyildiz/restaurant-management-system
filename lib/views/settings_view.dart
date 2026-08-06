@@ -47,6 +47,11 @@ class _SettingsViewState extends State<SettingsView> {
                 selectedIcon: Icon(Icons.people),
                 label: Text('Personel Yönetimi'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: Text('Genel Ayarlar'),
+              ),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
@@ -63,6 +68,8 @@ class _SettingsViewState extends State<SettingsView> {
     switch (_selectedIndex) {
       case 0:
         return UserManagementPage(controller: widget.controller);
+      case 1:
+        return const Center(child: Text('Genel Ayarlar (Yakında)'));
       default:
         return const Center(child: Text('Sayfa bulunamadı'));
     }

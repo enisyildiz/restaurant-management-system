@@ -1613,4 +1613,72 @@ Future<void> setDoubleSetting({
     conflictAlgorithm: ConflictAlgorithm.replace,
   );
 }
+  Future<List<Map<String, dynamic>>> getProductDailySalesTrendBetween({
+    required DateTime start,
+    required DateTime end,
+    String? productId,
+  }) async {
+    final db = await instance.database;
+    final String whereProduct = productId != null ? "AND oe.product_id = ?" : "";
+    final List<Object> args = [start.toIso8601String(), end.toIso8601String()];
+    if (productId != null) args.add(productId);
+
+    return db.rawQuery(
+      '''
+      SELECT
+        substr(oe.created_at, 1, 10) as sale_date,
+        SUM(oe.quantity_delta) as total_quantity,
+        SUM(oe.total_price) as total_revenue
+      FROM order_events oe
+      INNER JOIN table_sessions ts ON oe.session_id = ts.id
+      WHERE oe.created_at >= ?
+        AND oe.created_at < ?
+        AND oe.event_type IN ('order_added', 'item_removed')
+        AND ts.status = 'closed'
+        $whereProduct
+      GROUP BY substr(oe.created_at, 1, 10)
+      ORDER BY sale_date ASC
+      ''',
+      args,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getHourlyProductHeatmapBetween({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final db = await instance.database;
+    return db.rawQuery(
+      '''
+      SELECT
+        cast(substr(oe.created_at, 12, 2) as integer) as sale_hour,
+        SUM(oe.quantity_delta) as total_quantity,
+        SUM(oe.total_price) as total_revenue
+      FROM order_events oe
+      INNER JOIN table_sessions ts ON oe.session_id = ts.id
+      WHERE oe.created_at >= ?
+        AND oe.created_at < ?
+        AND oe.event_type IN ('order_added', 'item_removed')
+        AND ts.status = 'closed'
+      GROUP BY sale_hour
+      ORDER BY sale_hour ASC
+      ''',
+      [start.toIso8601String(), end.toIso8601String()],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAvailableProductsForAnalytics() async {
+    final db = await instance.database;
+    return db.rawQuery(
+      '''
+      SELECT DISTINCT
+        product_id,
+        product_name,
+        product_category
+      FROM order_events
+      WHERE product_id IS NOT NULL
+      ORDER BY product_name ASC
+      '''
+    );
+  }
 }
