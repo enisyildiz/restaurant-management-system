@@ -347,12 +347,6 @@ double _activeOpenRemainingRevenue() {
   required Offset localPosition,
   required Size size,
 }) {
-  final completedHour = lastUpdated.hour;
-
-  if (completedHour <= 0) {
-    return null;
-  }
-
   const double leftPadding = 72;
   const double rightPadding = 24;
   const double topPadding = 16;
@@ -374,12 +368,28 @@ double _activeOpenRemainingRevenue() {
   final relativeX = localPosition.dx - chartLeft;
   final rawHour = ((relativeX / chartWidth) * 24).round();
 
-  return rawHour.clamp(1, completedHour).toInt();
+  return rawHour.clamp(1, 24).toInt();
 }
 
 _HourlyHoverInfo _buildHoverInfo(int completedHour) {
-  final todayValue = _sumUntilHour(todayHourly, completedHour);
+  final isFutureHour = completedHour > lastUpdated.hour + 1;
   final yesterdayValue = _sumUntilHour(yesterdayHourly, completedHour);
+
+  if (isFutureHour) {
+    return _HourlyHoverInfo(
+      completedHour: completedHour,
+      todayValue: null,
+      yesterdayValue: yesterdayValue,
+      differenceAmount: null,
+      percentage: null,
+    );
+  }
+
+  double todayValue = _sumUntilHour(todayHourly, completedHour);
+  if (completedHour == lastUpdated.hour + 1) {
+    todayValue += _activeOpenRemainingRevenue();
+  }
+
   final differenceAmount = todayValue - yesterdayValue;
   final percentage = _percentageDifference(todayValue, yesterdayValue);
 
@@ -403,12 +413,16 @@ Offset _tooltipOffsetForHour({
   final chartRight = size.width - rightPadding;
   final chartWidth = chartRight - chartLeft;
 
-  final x = chartLeft + (completedHour / 24.0) * chartWidth;
+  final mouseX = chartLeft + (completedHour / 24.0) * chartWidth;
 
-  final tooltipX = x > size.width - 260 ? size.width - 270 : x + 12;
+  final isMouseOnLeftHalf = mouseX < (size.width / 2);
+
+  final tooltipX = isMouseOnLeftHalf
+      ? size.width - 270
+      : leftPadding + 12;
 
   return Offset(
-    tooltipX.clamp(12.0, size.width - 270),
+    tooltipX.clamp(12.0, size.width - 270).toDouble(),
     18,
   );
 }
@@ -1159,7 +1173,11 @@ class _HourlyRevenueChartPainter extends CustomPainter {
     guidePaint,
   );
 
-  final todayPoint = _findPointAtHour(todayPoints, hour);
+  _HourlyGraphPoint? todayPoint = _findPointAtHour(todayPoints, hour);
+  if (todayPoint == null && todayPoints.isNotEmpty && hour == todayPoints.last.hour.ceil()) {
+    todayPoint = todayPoints.last;
+  }
+
   final yesterdayPoint = _findPointAtHour(yesterdayPoints, hour);
 
   if (yesterdayPoint != null) {
@@ -1352,10 +1370,10 @@ class _MiniGraphInfoCard extends StatelessWidget {
 
 class _HourlyHoverInfo {
   final int completedHour;
-  final double todayValue;
+  final double? todayValue;
   final double yesterdayValue;
-  final double differenceAmount;
-  final double percentage;
+  final double? differenceAmount;
+  final double? percentage;
 
   const _HourlyHoverInfo({
     required this.completedHour,
@@ -1375,8 +1393,10 @@ class _HourlyHoverTooltip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final positive = info.percentage >= 0;
-    final color = positive ? Colors.green : Colors.red;
+    final positive = (info.percentage ?? 0) >= 0;
+    final color = info.percentage != null
+        ? (positive ? Colors.green : Colors.red)
+        : AppTheme.textMuted;
 
     return Material(
       elevation: 8,
@@ -1413,27 +1433,29 @@ class _HourlyHoverTooltip extends StatelessWidget {
             const SizedBox(height: 10),
             _tooltipLine(
               label: 'Bugün',
-              value: _formatMoneyLarge(info.todayValue),
+              value: info.todayValue == null ? '-' : _formatMoneyLarge(info.todayValue!),
             ),
             _tooltipLine(
               label: 'Dün',
               value: _formatMoneyLarge(info.yesterdayValue),
             ),
-            const Divider(height: 18),
-            _tooltipLine(
-              label: 'Fark',
-              value: _formatMoneyLarge(info.differenceAmount),
-              valueColor: color,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${positive ? '+' : ''}${info.percentage.toStringAsFixed(1)}%',
-              style: TextStyle(
-                color: color,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
+            if (info.differenceAmount != null && info.percentage != null) ...[
+              const Divider(height: 18),
+              _tooltipLine(
+                label: 'Fark',
+                value: _formatMoneyLarge(info.differenceAmount!),
+                valueColor: color,
               ),
-            ),
+              const SizedBox(height: 6),
+              Text(
+                '${positive ? '+' : ''}${info.percentage!.toStringAsFixed(1)}%',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -3818,11 +3840,15 @@ class _WeeklyMetricChartCardState extends State<_WeeklyMetricChartCard> {
     final chartRight = size.width - rightPadding;
     final chartWidth = chartRight - chartLeft;
 
-    final x = widget.points.length == 1
+    final mouseX = widget.points.length <= 1
         ? chartLeft
         : chartLeft + (index / (widget.points.length - 1)) * chartWidth;
 
-    final tooltipX = x > size.width - 270 ? size.width - 282 : x + 14;
+    final isMouseOnLeftHalf = mouseX < (size.width / 2);
+
+    final tooltipX = isMouseOnLeftHalf 
+        ? size.width - 282 
+        : leftPadding + 14;
 
     return Offset(
       tooltipX.clamp(12.0, size.width - 282).toDouble(),

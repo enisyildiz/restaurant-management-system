@@ -1,3 +1,5 @@
 {
-  "dart.flutterSdkPath": "C:\\flutter_3_7_12"
+  "dart.flutterSdkPath": "C:\\flutter_3_7_12",
+  "files.autoSave": "afterDelay",
+  "dart.flutterHotReloadOnSave": "all"
 }
